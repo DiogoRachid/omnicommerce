@@ -70,6 +70,26 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [importResult, setImportResult] = useState(null);
 
   const apiKey = company?.bling_api_key;
+  const [testing, setTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState(null); // null | 'ok' | 'fail'
+
+  const testConnection = async () => {
+    setTesting(true);
+    setError('');
+    setTestStatus(null);
+    try {
+      const json = await blingGet('/produtos?pagina=1&limite=1', apiKey);
+      if (json?.data !== undefined) {
+        setTestStatus('ok');
+      } else {
+        throw new Error('Resposta inesperada do Bling');
+      }
+    } catch (e) {
+      setError('Falha na conexão: ' + e.message);
+      setTestStatus('fail');
+    }
+    setTesting(false);
+  };
 
   const fetchProducts = async () => {
     setStep('loading');
@@ -153,6 +173,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setImportResult(null);
     setProgress(0);
     setProgressLabel('');
+    setTestStatus(null);
     onClose();
   };
 
@@ -182,6 +203,12 @@ export default function BlingImportDialog({ company, open, onClose }) {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
+              {testStatus === 'ok' && (
+                <Alert className="border-green-200 bg-green-50 text-green-800">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <AlertDescription>Conexão com o Bling estabelecida com sucesso!</AlertDescription>
+                </Alert>
+              )}
               <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto">
                 <Download className="w-8 h-8 text-orange-500" />
               </div>
@@ -191,9 +218,15 @@ export default function BlingImportDialog({ company, open, onClose }) {
                   Conectado via API Key da empresa <strong>{company?.nome_fantasia || company?.razao_social}</strong>
                 </p>
               </div>
-              <Button onClick={fetchProducts} className="gap-2 bg-orange-500 hover:bg-orange-600">
-                <Download className="w-4 h-4" /> Buscar Produtos
-              </Button>
+              <div className="flex gap-3 justify-center">
+                <Button variant="outline" onClick={testConnection} disabled={testing} className="gap-2">
+                  {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  Testar Conexão
+                </Button>
+                <Button onClick={fetchProducts} className="gap-2 bg-orange-500 hover:bg-orange-600">
+                  <Download className="w-4 h-4" /> Buscar Produtos
+                </Button>
+              </div>
             </div>
           )}
 
