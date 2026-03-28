@@ -1,0 +1,28 @@
+{
+  "name": "BlingToken",
+  "type": "object",
+  "properties": {
+    "account": {
+      "type": "string",
+      "description": "Identificador da conta Bling (ex: chinelomania)"
+    },
+    "access_token": {
+      "type": "string",
+      "description": "Token de acesso OAuth2"
+    },
+    "refresh_token": {
+      "type": "string",
+      "description": "Token de refresh OAuth2"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data/hora de expira\u00e7\u00e3o do access_token"
+    }
+  },
+  "required": [
+    "account",
+    "access_token",
+    "refresh_token"
+  ]
+}
