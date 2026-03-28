@@ -11,61 +11,54 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Package, Download, CheckCircle2, AlertCircle, Loader2,
-  RefreshCw, Image, Scale, Barcode, FileText, Trash2
+  RefreshCw, Trash2
 } from 'lucide-react';
 
-const BLING_API = 'https://api.bling.com.br/Api/v3';
 const CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
 const CLIENT_SECRET = '5717f3608cd49d9a3b0bfd04aa63d44812778b57c58b7958e4552672ec9f';
 
-// Troca o authorization code por access token via proxy LLM (CORS workaround)
-async function exchangeCodeForToken(code, redirectUri) {
-  const credentials = btoa(`${CLIENT_ID}:${CLIENT_SECRET}`);
-  const res = await fetch(`${BLING_API}/oauth/token`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${credentials}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: redirectUri,
-    }),
+// Usa o InvokeLLM como proxy HTTP para evitar CORS
+async function blingRequest(path, accessToken) {
+  const result = await base44.integrations.Core.InvokeLLM({
+    prompt: `Faça uma requisição HTTP GET para a URL: https://api.bling.com.br/Api/v3${path}
+Use o header: Authorization: Bearer ${accessToken}
+Retorne EXATAMENTE o JSON da resposta, sem modificações.`,
+    response_json_schema: {
+      type: 'object',
+      properties: {
+        data: { type: 'array', items: { type: 'object' } },
+        error: { type: 'object' }
+      }
+    }
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error_description || `Erro ${res.status} ao obter token`);
-  }
-  return res.json();
+  return result;
 }
 
-async function fetchBlingPage(token, page = 1) {
-  const res = await fetch(`${BLING_API}/produtos?pagina=${page}&limite=100&criterio=1`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.description || `Erro ${res.status} ao acessar a API do Bling`);
-  }
-  return res.json();
-}
+async function blingTokenRequest(code, redirectUri) {
+  const result = await base44.integrations.Core.InvokeLLM({
+    prompt: `Faça uma requisição HTTP POST para https://api.bling.com.br/Api/v3/oauth/token com:
+- Header Authorization: Basic ${btoa(CLIENT_ID + ':' + CLIENT_SECRET)}
+- Header Content-Type: application/x-www-form-urlencoded
+- Body: grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}
 
-async function fetchBlingProductDetail(token, id) {
-  const res = await fetch(`${BLING_API}/produtos/${id}`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+Retorne o JSON da resposta.`,
+    response_json_schema: {
+      type: 'object',
+      properties: {
+        access_token: { type: 'string' },
+        refresh_token: { type: 'string' },
+        error: { type: 'string' },
+        error_description: { type: 'string' }
+      }
+    }
   });
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json?.data || null;
+  return result;
 }
 
 function mapBlingProduct(bp, companyId) {
   const dim = bp.dimensoes || {};
   const fotos = (bp.midia?.imagens?.externas || [])
-    .map(i => i.link)
-    .filter(Boolean)
-    .slice(0, 5);
+    .map(i => i.link).filter(Boolean).slice(0, 5);
 
   return {
     sku: bp.codigo || `BLING-${bp.id}`,
@@ -95,7 +88,7 @@ function mapBlingProduct(bp, companyId) {
 
 export default function BlingImportDialog({ company, open, onClose }) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState('auth'); // auth | preview | importing | done
+  const [step, setStep] = useState('auth');
   const [accessToken, setAccessToken] = useState('');
   const [authCode, setAuthCode] = useState('');
   const [blingProducts, setBlingProducts] = useState([]);
@@ -106,20 +99,19 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
 
-  // Token direto (salvo na empresa) ou via OAuth
   const savedToken = company?.bling_api_key;
-
-  const redirectUri = window.location.origin + window.location.pathname;
-
+  const redirectUri = window.location.origin;
   const oauthUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&state=bling_import&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
   const handleExchangeCode = async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await exchangeCodeForToken(authCode.trim(), redirectUri);
+      const data = await blingTokenRequest(authCode.trim(), redirectUri);
+      if (data.error || !data.access_token) {
+        throw new Error(data.error_description || data.error || 'Falha ao obter token');
+      }
       setAccessToken(data.access_token);
-      setStep('preview');
       await doFetchProducts(data.access_token);
     } catch (e) {
       setError(e.message);
@@ -129,7 +121,6 @@ export default function BlingImportDialog({ company, open, onClose }) {
 
   const handleUseDirectToken = async () => {
     setAccessToken(savedToken);
-    setStep('preview');
     await doFetchProducts(savedToken);
   };
 
@@ -138,11 +129,12 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setError('');
     setBlingProducts([]);
     setSelected({});
+    setStep('preview');
     try {
       let all = [];
       let page = 1;
       while (true) {
-        const json = await fetchBlingPage(token, page);
+        const json = await blingRequest(`/produtos?pagina=${page}&limite=100&criterio=1`, token);
         const items = json?.data || [];
         if (items.length === 0) break;
         all = [...all, ...items];
@@ -174,20 +166,23 @@ export default function BlingImportDialog({ company, open, onClose }) {
     const toDelete = company?.id
       ? existingRaw.filter(p => p.company_id === company.id)
       : existingRaw;
-
     for (const p of toDelete) {
       try { await base44.entities.Product.delete(p.id); } catch {}
     }
 
-    // 2. Importa os produtos do Bling
+    // 2. Importa cada produto com detalhes completos
     for (let i = 0; i < toImport.length; i++) {
       const bp = toImport[i];
       setProgress(Math.round(((i + 1) / toImport.length) * 100));
       setProgressLabel(`Importando ${i + 1} de ${toImport.length}: ${bp.nome}`);
 
-      const detail = await fetchBlingProductDetail(token, bp.id);
-      const productData = mapBlingProduct(detail || bp, company?.id);
+      let detail = null;
+      try {
+        const detailJson = await blingRequest(`/produtos/${bp.id}`, token);
+        detail = detailJson?.data || null;
+      } catch {}
 
+      const productData = mapBlingProduct(detail || bp, company?.id);
       try {
         await base44.entities.Product.create(productData);
         created++;
@@ -210,7 +205,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const selectedCount = Object.values(selected).filter(Boolean).length;
 
   const handleClose = () => {
-    setStep(savedToken ? 'auth' : 'auth');
+    setStep('auth');
     setBlingProducts([]);
     setSelected({});
     setError('');
@@ -252,7 +247,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
               {savedToken && (
                 <div className="border rounded-lg p-4 space-y-3">
                   <h3 className="font-semibold text-sm">Usar token salvo na empresa</h3>
-                  <p className="text-xs text-muted-foreground">Esta empresa já possui um Access Token configurado. Clique para usá-lo diretamente.</p>
+                  <p className="text-xs text-muted-foreground">Esta empresa já possui um Access Token configurado.</p>
                   <Button onClick={handleUseDirectToken} disabled={loading} className="gap-2">
                     {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                     Usar token salvo e buscar produtos
@@ -263,7 +258,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
               <div className="border rounded-lg p-4 space-y-3">
                 <h3 className="font-semibold text-sm">Autenticar via OAuth2</h3>
                 <p className="text-xs text-muted-foreground">
-                  Clique no botão abaixo para autorizar o acesso ao Bling. Após autorizar, você será redirecionado — copie o <strong>código</strong> que aparecer na URL (<code>?code=...</code>) e cole abaixo.
+                  Clique para autorizar no Bling. Após autorizar, copie o <strong>code</strong> da URL e cole abaixo.
                 </p>
                 <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="gap-2 w-full">
@@ -279,7 +274,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
                       value={authCode}
                       onChange={e => setAuthCode(e.target.value)}
                     />
-                    <Button onClick={handleExchangeCode} disabled={!authCode.trim() || loading} className="gap-2 shrink-0">
+                    <Button onClick={handleExchangeCode} disabled={!authCode.trim() || loading} className="shrink-0">
                       {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continuar'}
                     </Button>
                   </div>
@@ -310,7 +305,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
                   <Alert>
                     <Trash2 className="h-4 w-4" />
                     <AlertDescription>
-                      <strong>Atenção:</strong> Todos os produtos existentes desta empresa serão <strong>apagados</strong> e substituídos pelos produtos do Bling selecionados abaixo.
+                      <strong>Atenção:</strong> Todos os produtos existentes desta empresa serão <strong>apagados</strong> e substituídos pelos selecionados abaixo.
                     </AlertDescription>
                   </Alert>
 
@@ -334,10 +329,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
                         <thead className="bg-muted sticky top-0">
                           <tr>
                             <th className="w-10 p-2 text-left">
-                              <Checkbox
-                                checked={selectedCount === blingProducts.length}
-                                onCheckedChange={(v) => toggleAll(v)}
-                              />
+                              <Checkbox checked={selectedCount === blingProducts.length} onCheckedChange={toggleAll} />
                             </th>
                             <th className="p-2 text-left font-medium text-muted-foreground">Produto</th>
                             <th className="p-2 text-left font-medium text-muted-foreground">Cód.</th>
@@ -348,13 +340,12 @@ export default function BlingImportDialog({ company, open, onClose }) {
                         </thead>
                         <tbody>
                           {blingProducts.map((p) => (
-                            <tr key={p.id} className="border-t hover:bg-muted/30 cursor-pointer" onClick={() => setSelected(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
+                            <tr key={p.id} className="border-t hover:bg-muted/30 cursor-pointer"
+                              onClick={() => setSelected(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
                               <td className="p-2">
-                                <Checkbox
-                                  checked={!!selected[p.id]}
+                                <Checkbox checked={!!selected[p.id]}
                                   onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                                  onClick={(e) => e.stopPropagation()} />
                               </td>
                               <td className="p-2">
                                 <p className="font-medium truncate max-w-[200px]">{p.nome}</p>
@@ -366,10 +357,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
                                 {p.preco ? `R$ ${parseFloat(p.preco).toFixed(2)}` : '-'}
                               </td>
                               <td className="p-2 text-center">
-                                <Badge
-                                  variant={p.situacao === 'A' ? 'default' : 'secondary'}
-                                  className="text-[10px] px-1.5"
-                                >
+                                <Badge variant={p.situacao === 'A' ? 'default' : 'secondary'} className="text-[10px] px-1.5">
                                   {p.situacao === 'A' ? 'Ativo' : 'Inativo'}
                                 </Badge>
                               </td>
@@ -431,13 +419,9 @@ export default function BlingImportDialog({ company, open, onClose }) {
           {step === 'preview' && !loading && (
             <>
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
-              <Button
-                onClick={handleImport}
-                disabled={selectedCount === 0}
-                className="gap-2 bg-orange-500 hover:bg-orange-600"
-              >
+              <Button onClick={handleImport} disabled={selectedCount === 0} className="gap-2 bg-orange-500 hover:bg-orange-600">
                 <Trash2 className="w-4 h-4" />
-                Apagar existentes e importar {selectedCount > 0 ? `${selectedCount} produto${selectedCount > 1 ? 's' : ''}` : ''}
+                Apagar e importar {selectedCount > 0 ? `${selectedCount} produto${selectedCount > 1 ? 's' : ''}` : ''}
               </Button>
             </>
           )}
