@@ -1,0 +1,61 @@
+{
+  "name": "Client",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string"
+    },
+    "tipo_pessoa": {
+      "type": "string",
+      "enum": [
+        "fisica",
+        "juridica"
+      ],
+      "default": "fisica"
+    },
+    "cpf_cnpj": {
+      "type": "string"
+    },
+    "inscricao_estadual": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "endereco": {
+      "type": "object",
+      "properties": {
+        "logradouro": {
+          "type": "string"
+        },
+        "numero": {
+          "type": "string"
+        },
+        "complemento": {
+          "type": "string"
+        },
+        "bairro": {
+          "type": "string"
+        },
+        "cidade": {
+          "type": "string"
+        },
+        "uf": {
+          "type": "string"
+        },
+        "cep": {
+          "type": "string"
+        }
+      }
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "nome"
+  ]
+}

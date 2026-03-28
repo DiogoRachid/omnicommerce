@@ -1,0 +1,60 @@
+{
+  "name": "MarketplaceListing",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string"
+    },
+    "product_name": {
+      "type": "string"
+    },
+    "marketplace": {
+      "type": "string",
+      "enum": [
+        "mercado_livre",
+        "shopee",
+        "amazon",
+        "magalu",
+        "americanas"
+      ]
+    },
+    "marketplace_item_id": {
+      "type": "string",
+      "description": "ID do an\u00fancio na plataforma"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativo",
+        "pausado",
+        "inativo",
+        "erro",
+        "pendente"
+      ],
+      "default": "pendente"
+    },
+    "preco_anuncio": {
+      "type": "number"
+    },
+    "comissao_percentual": {
+      "type": "number"
+    },
+    "url_anuncio": {
+      "type": "string"
+    },
+    "ultima_sync": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "erro": {
+      "type": "string"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "product_id",
+    "marketplace"
+  ]
+}

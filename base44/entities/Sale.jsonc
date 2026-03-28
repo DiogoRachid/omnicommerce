@@ -1,0 +1,110 @@
+{
+  "name": "Sale",
+  "type": "object",
+  "properties": {
+    "numero": {
+      "type": "number",
+      "description": "N\u00famero sequencial da venda"
+    },
+    "canal": {
+      "type": "string",
+      "enum": [
+        "pdv",
+        "ecommerce",
+        "mercado_livre",
+        "shopee",
+        "amazon",
+        "b2b",
+        "outro"
+      ],
+      "description": "Canal de venda"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "confirmada",
+        "cancelada",
+        "devolvida"
+      ],
+      "default": "pendente"
+    },
+    "client_id": {
+      "type": "string"
+    },
+    "client_name": {
+      "type": "string"
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "desconto": {
+      "type": "number",
+      "default": 0
+    },
+    "frete": {
+      "type": "number",
+      "default": 0
+    },
+    "total": {
+      "type": "number"
+    },
+    "forma_pagamento": {
+      "type": "string",
+      "enum": [
+        "dinheiro",
+        "pix",
+        "cartao_credito",
+        "cartao_debito",
+        "boleto",
+        "transferencia",
+        "marketplace"
+      ],
+      "description": "Forma de pagamento"
+    },
+    "invoice_id": {
+      "type": "string",
+      "description": "ID da nota fiscal vinculada"
+    },
+    "marketplace_order_id": {
+      "type": "string",
+      "description": "ID do pedido no marketplace"
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "product_name": {
+            "type": "string"
+          },
+          "sku": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "preco_unitario": {
+            "type": "number"
+          },
+          "desconto": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "canal",
+    "total"
+  ]
+}

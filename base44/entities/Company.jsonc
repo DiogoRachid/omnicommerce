@@ -1,0 +1,134 @@
+{
+  "name": "Company",
+  "type": "object",
+  "properties": {
+    "razao_social": {
+      "type": "string",
+      "description": "Raz\u00e3o social da empresa"
+    },
+    "nome_fantasia": {
+      "type": "string",
+      "description": "Nome fantasia"
+    },
+    "cnpj": {
+      "type": "string",
+      "description": "CNPJ da empresa (apenas n\u00fameros)"
+    },
+    "inscricao_estadual": {
+      "type": "string",
+      "description": "Inscri\u00e7\u00e3o estadual"
+    },
+    "regime_tributario": {
+      "type": "string",
+      "enum": [
+        "simples_nacional",
+        "lucro_presumido",
+        "lucro_real"
+      ],
+      "description": "Regime tribut\u00e1rio"
+    },
+    "endereco": {
+      "type": "object",
+      "properties": {
+        "logradouro": {
+          "type": "string"
+        },
+        "numero": {
+          "type": "string"
+        },
+        "complemento": {
+          "type": "string"
+        },
+        "bairro": {
+          "type": "string"
+        },
+        "cidade": {
+          "type": "string"
+        },
+        "uf": {
+          "type": "string"
+        },
+        "cep": {
+          "type": "string"
+        }
+      }
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "bling_api_key": {
+      "type": "string",
+      "description": "Chave API do Bling para esta empresa"
+    },
+    "bling_integrated": {
+      "type": "boolean",
+      "default": false
+    },
+    "marketplaces_config": {
+      "type": "object",
+      "description": "Configura\u00e7\u00f5es de integra\u00e7\u00e3o por marketplace",
+      "properties": {
+        "mercado_livre": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "access_token": {
+              "type": "string"
+            },
+            "user_id": {
+              "type": "string"
+            }
+          }
+        },
+        "shopee": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "shop_id": {
+              "type": "string"
+            },
+            "access_token": {
+              "type": "string"
+            }
+          }
+        },
+        "amazon": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "seller_id": {
+              "type": "string"
+            },
+            "access_token": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ativa",
+        "inativa"
+      ],
+      "default": "ativa"
+    },
+    "logo_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "razao_social",
+    "cnpj"
+  ]
+}

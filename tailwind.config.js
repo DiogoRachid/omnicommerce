@@ -4,6 +4,9 @@ module.exports = {
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
   theme: {
   	extend: {
+  		fontFamily: {
+  			inter: ['var(--font-inter)']
+  		},
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
@@ -85,5 +88,10 @@ module.exports = {
   		}
   	}
   },
+  safelist: [
+    'bg-chart-1/10', 'bg-chart-2/10', 'bg-chart-3/10', 'bg-chart-4/10',
+    'text-chart-1', 'text-chart-2', 'text-chart-3', 'text-chart-4',
+    'bg-primary/10', 'bg-primary/20',
+  ],
   plugins: [require("tailwindcss-animate")],
 }

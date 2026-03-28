@@ -5,12 +5,26 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-// Add page imports here
+
+import AppLayout from '@/components/layout/AppLayout';
+import Dashboard from '@/pages/Dashboard';
+import Companies from '@/pages/Companies';
+import Products from '@/pages/Products';
+import ProductForm from '@/pages/ProductForm';
+import Stock from '@/pages/Stock';
+import Sales from '@/pages/Sales';
+import NewSale from '@/pages/NewSale';
+import Invoices from '@/pages/Invoices';
+import ImportInvoice from '@/pages/ImportInvoice';
+import Clients from '@/pages/Clients';
+import Marketplaces from '@/pages/Marketplaces';
+import Reports from '@/pages/Reports';
+import IAPricing from '@/pages/IAPricing';
+import Settings from '@/pages/Settings';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
-  // Show loading spinner while checking app public settings or auth
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
@@ -19,29 +33,40 @@ const AuthenticatedApp = () => {
     );
   }
 
-  // Handle authentication errors
   if (authError) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
-      // Redirect to login automatically
       navigateToLogin();
       return null;
     }
   }
 
-  // Render the main app
   return (
     <Routes>
-      {/* Add your page Route elements here */}
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/empresas" element={<Companies />} />
+        <Route path="/produtos" element={<Products />} />
+        <Route path="/produtos/novo" element={<ProductForm />} />
+        <Route path="/produtos/editar/:id" element={<ProductForm />} />
+        <Route path="/estoque" element={<Stock />} />
+        <Route path="/vendas" element={<Sales />} />
+        <Route path="/vendas/nova" element={<NewSale />} />
+        <Route path="/notas-fiscais" element={<Invoices />} />
+        <Route path="/notas-fiscais/importar" element={<ImportInvoice />} />
+        <Route path="/clientes" element={<Clients />} />
+        <Route path="/marketplaces" element={<Marketplaces />} />
+        <Route path="/relatorios" element={<Reports />} />
+        <Route path="/ia-precos" element={<IAPricing />} />
+        <Route path="/configuracoes" element={<Settings />} />
+      </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
 };
 
-
 function App() {
-
   return (
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>

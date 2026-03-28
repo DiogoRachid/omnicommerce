@@ -1,0 +1,114 @@
+{
+  "name": "Product",
+  "type": "object",
+  "properties": {
+    "sku": {
+      "type": "string",
+      "description": "SKU \u00fanico do produto"
+    },
+    "ean": {
+      "type": "string",
+      "description": "C\u00f3digo EAN/GTIN"
+    },
+    "nome": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o detalhada"
+    },
+    "marca": {
+      "type": "string"
+    },
+    "ncm": {
+      "type": "string",
+      "description": "NCM - 8 d\u00edgitos"
+    },
+    "cest": {
+      "type": "string",
+      "description": "CEST - 7 d\u00edgitos"
+    },
+    "unidade_medida": {
+      "type": "string",
+      "enum": [
+        "UN",
+        "KG",
+        "CX",
+        "PC",
+        "LT",
+        "MT",
+        "M2",
+        "M3"
+      ],
+      "default": "UN"
+    },
+    "peso_bruto_kg": {
+      "type": "number"
+    },
+    "peso_liquido_kg": {
+      "type": "number"
+    },
+    "altura_cm": {
+      "type": "number"
+    },
+    "largura_cm": {
+      "type": "number"
+    },
+    "comprimento_cm": {
+      "type": "number"
+    },
+    "fotos": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "URLs das fotos"
+    },
+    "preco_custo": {
+      "type": "number",
+      "description": "Pre\u00e7o de custo"
+    },
+    "margem_padrao": {
+      "type": "number",
+      "description": "Margem padr\u00e3o em %"
+    },
+    "preco_venda": {
+      "type": "number",
+      "description": "Pre\u00e7o de venda"
+    },
+    "estoque_atual": {
+      "type": "number",
+      "default": 0
+    },
+    "estoque_minimo": {
+      "type": "number",
+      "default": 0
+    },
+    "estoque_maximo": {
+      "type": "number"
+    },
+    "origem": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "xml_nfe",
+        "ean_api",
+        "importacao"
+      ],
+      "default": "manual"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    },
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa propriet\u00e1ria"
+    }
+  },
+  "required": [
+    "nome",
+    "sku"
+  ]
+}

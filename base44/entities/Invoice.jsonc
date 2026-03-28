@@ -1,0 +1,132 @@
+{
+  "name": "Invoice",
+  "type": "object",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "entrada",
+        "saida"
+      ],
+      "description": "Tipo: entrada (compra) ou sa\u00edda (venda)"
+    },
+    "modelo": {
+      "type": "string",
+      "enum": [
+        "55",
+        "65"
+      ],
+      "description": "55=NF-e, 65=NFC-e"
+    },
+    "numero": {
+      "type": "string",
+      "description": "N\u00famero da nota"
+    },
+    "serie": {
+      "type": "string"
+    },
+    "chave_acesso": {
+      "type": "string",
+      "description": "Chave de acesso (44 d\u00edgitos)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "autorizada",
+        "rejeitada",
+        "cancelada",
+        "importada"
+      ],
+      "default": "pendente"
+    },
+    "emitente_cnpj": {
+      "type": "string"
+    },
+    "emitente_nome": {
+      "type": "string"
+    },
+    "destinatario_cnpj": {
+      "type": "string"
+    },
+    "destinatario_nome": {
+      "type": "string"
+    },
+    "valor_total": {
+      "type": "number"
+    },
+    "valor_produtos": {
+      "type": "number"
+    },
+    "valor_frete": {
+      "type": "number"
+    },
+    "valor_desconto": {
+      "type": "number"
+    },
+    "data_emissao": {
+      "type": "string",
+      "format": "date"
+    },
+    "xml_url": {
+      "type": "string",
+      "description": "URL do arquivo XML"
+    },
+    "pdf_url": {
+      "type": "string",
+      "description": "URL do DANFE PDF"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "produto_nome": {
+            "type": "string"
+          },
+          "produto_ean": {
+            "type": "string"
+          },
+          "ncm": {
+            "type": "string"
+          },
+          "cfop": {
+            "type": "string"
+          },
+          "quantidade": {
+            "type": "number"
+          },
+          "valor_unitario": {
+            "type": "number"
+          },
+          "valor_total": {
+            "type": "number"
+          },
+          "product_id": {
+            "type": "string",
+            "description": "ID do produto vinculado no sistema"
+          },
+          "vinculado": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "bling_id": {
+      "type": "string",
+      "description": "ID da nota no Bling"
+    },
+    "sale_id": {
+      "type": "string",
+      "description": "ID da venda vinculada"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tipo",
+    "company_id"
+  ]
+}
