@@ -7,22 +7,17 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
   Package, Download, CheckCircle2, AlertCircle, Loader2,
   RefreshCw, Trash2
 } from 'lucide-react';
 
-const CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
-const CLIENT_SECRET = '5717f3608cd49d9a3b0bfd04aa63d44812778b57c58b7958e4552672ec9f';
-
-// Usa o InvokeLLM como proxy HTTP para evitar CORS
-async function blingRequest(path, accessToken) {
-  const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Faça uma requisição HTTP GET para a URL: https://api.bling.com.br/Api/v3${path}
-Use o header: Authorization: Bearer ${accessToken}
-Retorne EXATAMENTE o JSON da resposta, sem modificações.`,
+// Usa InvokeLLM como proxy para evitar bloqueio CORS
+async function blingGet(path, apiKey) {
+  return await base44.integrations.Core.InvokeLLM({
+    prompt: `Faça uma requisição HTTP GET para a URL exata: https://api.bling.com.br/Api/v3${path}
+Use o header: Authorization: Bearer ${apiKey}
+Retorne EXATAMENTE o JSON da resposta sem nenhuma modificação ou comentário.`,
     response_json_schema: {
       type: 'object',
       properties: {
@@ -31,28 +26,6 @@ Retorne EXATAMENTE o JSON da resposta, sem modificações.`,
       }
     }
   });
-  return result;
-}
-
-async function blingTokenRequest(code, redirectUri) {
-  const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Faça uma requisição HTTP POST para https://api.bling.com.br/Api/v3/oauth/token com:
-- Header Authorization: Basic ${btoa(CLIENT_ID + ':' + CLIENT_SECRET)}
-- Header Content-Type: application/x-www-form-urlencoded
-- Body: grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}
-
-Retorne o JSON da resposta.`,
-    response_json_schema: {
-      type: 'object',
-      properties: {
-        access_token: { type: 'string' },
-        refresh_token: { type: 'string' },
-        error: { type: 'string' },
-        error_description: { type: 'string' }
-      }
-    }
-  });
-  return result;
 }
 
 function mapBlingProduct(bp, companyId) {
@@ -88,53 +61,26 @@ function mapBlingProduct(bp, companyId) {
 
 export default function BlingImportDialog({ company, open, onClose }) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState('auth');
-  const [accessToken, setAccessToken] = useState('');
-  const [authCode, setAuthCode] = useState('');
+  const [step, setStep] = useState('idle'); // idle | loading | preview | importing | done
   const [blingProducts, setBlingProducts] = useState([]);
   const [selected, setSelected] = useState({});
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
 
-  const savedToken = company?.bling_api_key;
-  const redirectUri = window.location.origin;
-  const oauthUrl = `https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id=${CLIENT_ID}&state=bling_import&redirect_uri=${encodeURIComponent(redirectUri)}`;
+  const apiKey = company?.bling_api_key;
 
-  const handleExchangeCode = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await blingTokenRequest(authCode.trim(), redirectUri);
-      if (data.error || !data.access_token) {
-        throw new Error(data.error_description || data.error || 'Falha ao obter token');
-      }
-      setAccessToken(data.access_token);
-      await doFetchProducts(data.access_token);
-    } catch (e) {
-      setError(e.message);
-    }
-    setLoading(false);
-  };
-
-  const handleUseDirectToken = async () => {
-    setAccessToken(savedToken);
-    await doFetchProducts(savedToken);
-  };
-
-  const doFetchProducts = async (token) => {
-    setLoading(true);
+  const fetchProducts = async () => {
+    setStep('loading');
     setError('');
     setBlingProducts([]);
     setSelected({});
-    setStep('preview');
     try {
       let all = [];
       let page = 1;
       while (true) {
-        const json = await blingRequest(`/produtos?pagina=${page}&limite=100&criterio=1`, token);
+        const json = await blingGet(`/produtos?pagina=${page}&limite=100&criterio=1`, apiKey);
         const items = json?.data || [];
         if (items.length === 0) break;
         all = [...all, ...items];
@@ -142,35 +88,33 @@ export default function BlingImportDialog({ company, open, onClose }) {
         page++;
         if (page > 20) break;
       }
+      if (all.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
       setBlingProducts(all);
       const sel = {};
       all.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
+      setStep('preview');
     } catch (e) {
       setError(e.message);
-      setStep('auth');
+      setStep('idle');
     }
-    setLoading(false);
   };
 
   const handleImport = async () => {
     setStep('importing');
     setProgress(0);
-    const token = accessToken || savedToken;
     const toImport = blingProducts.filter(p => selected[p.id]);
     let created = 0, errors = 0;
 
-    // 1. Apaga todos os produtos existentes da empresa
     setProgressLabel('Apagando produtos existentes...');
-    const existingRaw = await base44.entities.Product.list('-created_date', 1000);
+    const existing = await base44.entities.Product.list('-created_date', 1000);
     const toDelete = company?.id
-      ? existingRaw.filter(p => p.company_id === company.id)
-      : existingRaw;
+      ? existing.filter(p => p.company_id === company.id)
+      : existing;
     for (const p of toDelete) {
       try { await base44.entities.Product.delete(p.id); } catch {}
     }
 
-    // 2. Importa cada produto com detalhes completos
     for (let i = 0; i < toImport.length; i++) {
       const bp = toImport[i];
       setProgress(Math.round(((i + 1) / toImport.length) * 100));
@@ -178,17 +122,14 @@ export default function BlingImportDialog({ company, open, onClose }) {
 
       let detail = null;
       try {
-        const detailJson = await blingRequest(`/produtos/${bp.id}`, token);
+        const detailJson = await blingGet(`/produtos/${bp.id}`, apiKey);
         detail = detailJson?.data || null;
       } catch {}
 
-      const productData = mapBlingProduct(detail || bp, company?.id);
       try {
-        await base44.entities.Product.create(productData);
+        await base44.entities.Product.create(mapBlingProduct(detail || bp, company?.id));
         created++;
-      } catch {
-        errors++;
-      }
+      } catch { errors++; }
     }
 
     setImportResult({ created, deleted: toDelete.length, errors, total: toImport.length });
@@ -205,15 +146,13 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const selectedCount = Object.values(selected).filter(Boolean).length;
 
   const handleClose = () => {
-    setStep('auth');
+    setStep('idle');
     setBlingProducts([]);
     setSelected({});
     setError('');
     setImportResult(null);
     setProgress(0);
     setProgressLabel('');
-    setAuthCode('');
-    setAccessToken('');
     onClose();
   };
 
@@ -234,148 +173,113 @@ export default function BlingImportDialog({ company, open, onClose }) {
 
         <div className="flex-1 overflow-y-auto">
 
-          {/* Step: Auth */}
-          {step === 'auth' && (
-            <div className="space-y-5 py-4">
+          {/* Idle */}
+          {step === 'idle' && (
+            <div className="py-10 text-center space-y-4">
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
+              <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto">
+                <Download className="w-8 h-8 text-orange-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-base">Buscar produtos do Bling</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Conectado via API Key da empresa <strong>{company?.nome_fantasia || company?.razao_social}</strong>
+                </p>
+              </div>
+              <Button onClick={fetchProducts} className="gap-2 bg-orange-500 hover:bg-orange-600">
+                <Download className="w-4 h-4" /> Buscar Produtos
+              </Button>
+            </div>
+          )}
 
-              {savedToken && (
-                <div className="border rounded-lg p-4 space-y-3">
-                  <h3 className="font-semibold text-sm">Usar token salvo na empresa</h3>
-                  <p className="text-xs text-muted-foreground">Esta empresa já possui um Access Token configurado.</p>
-                  <Button onClick={handleUseDirectToken} disabled={loading} className="gap-2">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    Usar token salvo e buscar produtos
+          {/* Loading */}
+          {step === 'loading' && (
+            <div className="text-center py-12 space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
+              <p className="text-sm text-muted-foreground">Buscando produtos no Bling...</p>
+            </div>
+          )}
+
+          {/* Preview */}
+          {step === 'preview' && (
+            <div className="space-y-4 py-2">
+              <Alert>
+                <Trash2 className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Atenção:</strong> Todos os produtos existentes desta empresa serão <strong>apagados</strong> e substituídos pelos selecionados abaixo.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium">{blingProducts.length} produtos encontrados</p>
+                  <Badge variant="secondary">{selectedCount} selecionados</Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => toggleAll(true)}>Todos</Button>
+                  <Button variant="outline" size="sm" onClick={() => toggleAll(false)}>Nenhum</Button>
+                  <Button variant="outline" size="sm" onClick={fetchProducts} className="gap-1">
+                    <RefreshCw className="w-3.5 h-3.5" /> Atualizar
                   </Button>
                 </div>
-              )}
+              </div>
 
-              <div className="border rounded-lg p-4 space-y-3">
-                <h3 className="font-semibold text-sm">Autenticar via OAuth2</h3>
-                <p className="text-xs text-muted-foreground">
-                  Clique para autorizar no Bling. Após autorizar, copie o <strong>code</strong> da URL e cole abaixo.
-                </p>
-                <a href={oauthUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="gap-2 w-full">
-                    <Download className="w-4 h-4 text-orange-500" />
-                    Autorizar no Bling (abre nova aba)
-                  </Button>
-                </a>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Cole o código de autorização aqui</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="código retornado na URL..."
-                      value={authCode}
-                      onChange={e => setAuthCode(e.target.value)}
-                    />
-                    <Button onClick={handleExchangeCode} disabled={!authCode.trim() || loading} className="shrink-0">
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Continuar'}
-                    </Button>
-                  </div>
+              <div className="border rounded-lg overflow-hidden">
+                <div className="max-h-[320px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted sticky top-0">
+                      <tr>
+                        <th className="w-10 p-2 text-left">
+                          <Checkbox checked={selectedCount === blingProducts.length} onCheckedChange={toggleAll} />
+                        </th>
+                        <th className="p-2 text-left font-medium text-muted-foreground">Produto</th>
+                        <th className="p-2 text-left font-medium text-muted-foreground">Cód.</th>
+                        <th className="p-2 text-left font-medium text-muted-foreground">EAN</th>
+                        <th className="p-2 text-right font-medium text-muted-foreground">Preço</th>
+                        <th className="p-2 text-center font-medium text-muted-foreground">Sit.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {blingProducts.map((p) => (
+                        <tr key={p.id} className="border-t hover:bg-muted/30 cursor-pointer"
+                          onClick={() => setSelected(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
+                          <td className="p-2">
+                            <Checkbox checked={!!selected[p.id]}
+                              onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
+                              onClick={(e) => e.stopPropagation()} />
+                          </td>
+                          <td className="p-2">
+                            <p className="font-medium truncate max-w-[200px]">{p.nome}</p>
+                            {p.marca && <p className="text-xs text-muted-foreground">{p.marca}</p>}
+                          </td>
+                          <td className="p-2 font-mono text-xs">{p.codigo || '-'}</td>
+                          <td className="p-2 font-mono text-xs">{p.gtin || '-'}</td>
+                          <td className="p-2 text-right">
+                            {p.preco ? `R$ ${parseFloat(p.preco).toFixed(2)}` : '-'}
+                          </td>
+                          <td className="p-2 text-center">
+                            <Badge variant={p.situacao === 'A' ? 'default' : 'secondary'} className="text-[10px] px-1.5">
+                              {p.situacao === 'A' ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Step: Preview */}
-          {step === 'preview' && (
-            <div className="space-y-4 py-2">
-              {loading && (
-                <div className="text-center py-10">
-                  <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Buscando produtos no Bling...</p>
-                </div>
-              )}
-
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
-              {!loading && blingProducts.length > 0 && (
-                <div className="space-y-3">
-                  <Alert>
-                    <Trash2 className="h-4 w-4" />
-                    <AlertDescription>
-                      <strong>Atenção:</strong> Todos os produtos existentes desta empresa serão <strong>apagados</strong> e substituídos pelos selecionados abaixo.
-                    </AlertDescription>
-                  </Alert>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <p className="text-sm font-medium">{blingProducts.length} produtos encontrados</p>
-                      <Badge variant="secondary">{selectedCount} selecionados</Badge>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => toggleAll(true)}>Todos</Button>
-                      <Button variant="outline" size="sm" onClick={() => toggleAll(false)}>Nenhum</Button>
-                      <Button variant="outline" size="sm" onClick={() => doFetchProducts(accessToken || savedToken)} className="gap-1">
-                        <RefreshCw className="w-3.5 h-3.5" /> Atualizar
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="border rounded-lg overflow-hidden">
-                    <div className="max-h-[300px] overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted sticky top-0">
-                          <tr>
-                            <th className="w-10 p-2 text-left">
-                              <Checkbox checked={selectedCount === blingProducts.length} onCheckedChange={toggleAll} />
-                            </th>
-                            <th className="p-2 text-left font-medium text-muted-foreground">Produto</th>
-                            <th className="p-2 text-left font-medium text-muted-foreground">Cód.</th>
-                            <th className="p-2 text-left font-medium text-muted-foreground">EAN</th>
-                            <th className="p-2 text-right font-medium text-muted-foreground">Preço</th>
-                            <th className="p-2 text-center font-medium text-muted-foreground">Sit.</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {blingProducts.map((p) => (
-                            <tr key={p.id} className="border-t hover:bg-muted/30 cursor-pointer"
-                              onClick={() => setSelected(prev => ({ ...prev, [p.id]: !prev[p.id] }))}>
-                              <td className="p-2">
-                                <Checkbox checked={!!selected[p.id]}
-                                  onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
-                                  onClick={(e) => e.stopPropagation()} />
-                              </td>
-                              <td className="p-2">
-                                <p className="font-medium truncate max-w-[200px]">{p.nome}</p>
-                                {p.marca && <p className="text-xs text-muted-foreground">{p.marca}</p>}
-                              </td>
-                              <td className="p-2 font-mono text-xs">{p.codigo || '-'}</td>
-                              <td className="p-2 font-mono text-xs">{p.gtin || '-'}</td>
-                              <td className="p-2 text-right">
-                                {p.preco ? `R$ ${parseFloat(p.preco).toFixed(2)}` : '-'}
-                              </td>
-                              <td className="p-2 text-center">
-                                <Badge variant={p.situacao === 'A' ? 'default' : 'secondary'} className="text-[10px] px-1.5">
-                                  {p.situacao === 'A' ? 'Ativo' : 'Inativo'}
-                                </Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Step: Importing */}
+          {/* Importing */}
           {step === 'importing' && (
             <div className="text-center py-12 space-y-4">
-              <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+              <Loader2 className="w-10 h-10 animate-spin text-orange-500 mx-auto" />
               <div>
                 <p className="font-semibold">Processando...</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">{progressLabel}</p>
@@ -387,7 +291,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
             </div>
           )}
 
-          {/* Step: Done */}
+          {/* Done */}
           {step === 'done' && importResult && (
             <div className="text-center py-10 space-y-4">
               <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
@@ -416,7 +320,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
         </div>
 
         <DialogFooter className="border-t pt-3">
-          {step === 'preview' && !loading && (
+          {step === 'preview' && (
             <>
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
               <Button onClick={handleImport} disabled={selectedCount === 0} className="gap-2 bg-orange-500 hover:bg-orange-600">
@@ -425,7 +329,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
               </Button>
             </>
           )}
-          {(step === 'auth' || (step === 'preview' && loading)) && (
+          {(step === 'idle' || step === 'loading') && (
             <Button variant="outline" onClick={handleClose}>Cancelar</Button>
           )}
           {step === 'done' && (
