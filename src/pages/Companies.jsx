@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Building2, Plus, Edit, Check, X } from 'lucide-react';
+import { Building2, Plus, Check, X, Download } from 'lucide-react';
+import BlingImportDialog from '@/components/bling/BlingImportDialog';
 
 const emptyCompany = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
@@ -21,6 +22,7 @@ export default function Companies() {
   const [showDialog, setShowDialog] = useState(false);
   const [editingCompany, setEditingCompany] = useState(null);
   const [form, setForm] = useState(emptyCompany);
+  const [blingImportCompany, setBlingImportCompany] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: companies = [], isLoading } = useQuery({
@@ -111,7 +113,7 @@ export default function Companies() {
                   {c.status === 'ativa' ? 'Ativa' : 'Inativa'}
                 </Badge>
               </div>
-              <div className="mt-4 flex gap-2 flex-wrap">
+              <div className="mt-4 flex gap-2 flex-wrap items-center">
                 <Badge variant="outline" className="text-[10px] gap-1">
                   {c.bling_integrated ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
                   Bling
@@ -125,11 +127,27 @@ export default function Companies() {
                 {c.marketplaces_config?.amazon?.enabled && (
                   <Badge variant="outline" className="text-[10px]">Amazon</Badge>
                 )}
+                {c.bling_integrated && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-6 text-[10px] px-2 gap-1"
+                    onClick={(e) => { e.stopPropagation(); setBlingImportCompany(c); }}
+                  >
+                    <Download className="w-3 h-3" /> Importar Bling
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <BlingImportDialog
+        company={blingImportCompany}
+        open={!!blingImportCompany}
+        onClose={() => setBlingImportCompany(null)}
+      />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
