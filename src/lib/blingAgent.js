@@ -65,10 +65,25 @@ export async function askBlingAgent(prompt) {
  */
 export async function askBlingAgentJSON(prompt) {
   const raw = await askBlingAgent(prompt);
-  // Tenta extrair JSON da resposta
-  const match = raw.match(/```json\n?([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-  if (match) {
-    return JSON.parse(match[1] || match[0]);
+
+  // 1. Tenta extrair bloco ```json ... ``` ou ``` ... ```
+  const codeBlockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    try { return JSON.parse(codeBlockMatch[1].trim()); } catch {}
   }
-  return JSON.parse(raw);
+
+  // 2. Tenta extrair array JSON diretamente
+  const arrayMatch = raw.match(/(\[[\s\S]*\])/);
+  if (arrayMatch) {
+    try { return JSON.parse(arrayMatch[1]); } catch {}
+  }
+
+  // 3. Tenta extrair objeto JSON diretamente
+  const objMatch = raw.match(/(\{[\s\S]*\})/);
+  if (objMatch) {
+    try { return JSON.parse(objMatch[1]); } catch {}
+  }
+
+  // 4. Tenta parsear o raw inteiro
+  return JSON.parse(raw.trim());
 }
