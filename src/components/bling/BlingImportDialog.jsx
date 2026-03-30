@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -13,10 +13,10 @@ import {
 } from 'lucide-react';
 
 // Usa InvokeLLM como proxy para evitar bloqueio CORS
-async function blingGet(path, apiKey) {
+async function blingGet(path, accessToken) {
   return await base44.integrations.Core.InvokeLLM({
-    prompt: `Faça uma requisição HTTP GET para a URL exata: https://api.bling.com.br/Api/v3${path}
-Use o header: Authorization: Bearer ${apiKey}
+    prompt: `Faça uma requisição HTTP GET para a URL exata: https://www.bling.com.br/Api/v3${path}
+Use o header: Authorization: Bearer ${accessToken}
 Retorne EXATAMENTE o JSON da resposta sem nenhuma modificação ou comentário.`,
     response_json_schema: {
       type: 'object',
@@ -68,17 +68,31 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
-
-  const apiKey = company?.bling_api_key;
+  const [accessToken, setAccessToken] = useState(null);
   const [testing, setTesting] = useState(false);
   const [testStatus, setTestStatus] = useState(null); // null | 'ok' | 'fail'
 
+  // Busca o access_token OAuth2 da entidade BlingToken
+  useEffect(() => {
+    if (open) {
+      base44.entities.BlingToken.list('-created_date', 1).then(records => {
+        const token = records?.[0];
+        if (token?.access_token) setAccessToken(token.access_token);
+        else setError('Token Bling não encontrado. Configure a integração OAuth2 nas Configurações.');
+      });
+    }
+  }, [open]);
+
   const testConnection = async () => {
+    if (!accessToken) {
+      setError('Token OAuth2 não disponível. Configure nas Configurações.');
+      return;
+    }
     setTesting(true);
     setError('');
     setTestStatus(null);
     try {
-      const json = await blingGet('/produtos?pagina=1&limite=1', apiKey);
+      const json = await blingGet('/produtos?pagina=1&limite=1', accessToken);
       if (json?.data !== undefined) {
         setTestStatus('ok');
       } else {
@@ -92,6 +106,10 @@ export default function BlingImportDialog({ company, open, onClose }) {
   };
 
   const fetchProducts = async () => {
+    if (!accessToken) {
+      setError('Token OAuth2 não disponível. Configure nas Configurações.');
+      return;
+    }
     setStep('loading');
     setError('');
     setBlingProducts([]);
@@ -100,7 +118,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
       let all = [];
       let page = 1;
       while (true) {
-        const json = await blingGet(`/produtos?pagina=${page}&limite=100&criterio=1`, apiKey);
+        const json = await blingGet(`/produtos?pagina=${page}&limite=100&criterio=1`, accessToken);
         const items = json?.data || [];
         if (items.length === 0) break;
         all = [...all, ...items];
@@ -142,7 +160,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
 
       let detail = null;
       try {
-        const detailJson = await blingGet(`/produtos/${bp.id}`, apiKey);
+        const detailJson = await blingGet(`/produtos/${bp.id}`, accessToken);
         detail = detailJson?.data || null;
       } catch {}
 
