@@ -8,14 +8,22 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Building2, Plus, Check, X, Download } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Building2, Plus, Check, X, Download, ShoppingBag } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
+
+const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
 
 const emptyCompany = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
   regime_tributario: 'simples_nacional', telefone: '', email: '',
   bling_api_key: '', bling_integrated: false, status: 'ativa',
   endereco: { logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '', cep: '' },
+  marketplaces_config: {
+    mercado_livre: { ...emptyMarketplace },
+    shopee: { ...emptyMarketplace },
+    amazon: { ...emptyMarketplace },
+  },
 };
 
 export default function Companies() {
@@ -57,6 +65,11 @@ export default function Companies() {
       ...emptyCompany,
       ...company,
       endereco: { ...emptyCompany.endereco, ...(company.endereco || {}) },
+      marketplaces_config: {
+        mercado_livre: { ...emptyMarketplace, ...(company.marketplaces_config?.mercado_livre || {}) },
+        shopee: { ...emptyMarketplace, ...(company.marketplaces_config?.shopee || {}) },
+        amazon: { ...emptyMarketplace, ...(company.marketplaces_config?.amazon || {}) },
+      },
     });
     setShowDialog(true);
   };
@@ -68,6 +81,13 @@ export default function Companies() {
   const updateField = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
   const updateEndereco = (key, value) => setForm(prev => ({
     ...prev, endereco: { ...prev.endereco, [key]: value }
+  }));
+  const updateMarketplace = (mp, key, value) => setForm(prev => ({
+    ...prev,
+    marketplaces_config: {
+      ...prev.marketplaces_config,
+      [mp]: { ...prev.marketplaces_config[mp], [key]: value },
+    },
   }));
 
   return (
@@ -236,6 +256,124 @@ export default function Companies() {
               <p className="text-xs text-muted-foreground mt-1">
                 A chave API do Bling é necessária para emissão de notas fiscais desta empresa.
               </p>
+            </div>
+
+            {/* Marketplaces */}
+            <div className="md:col-span-2 border-t pt-4 mt-2 space-y-5">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4" /> APIs dos Marketplaces
+              </h3>
+
+              {/* Mercado Livre */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded bg-yellow-400 flex items-center justify-center">
+                      <span className="text-[9px] font-bold text-black">ML</span>
+                    </div>
+                    <span className="font-medium text-sm">Mercado Livre</span>
+                  </div>
+                  <Switch
+                    checked={!!form.marketplaces_config.mercado_livre.enabled}
+                    onCheckedChange={(v) => updateMarketplace('mercado_livre', 'enabled', v)}
+                  />
+                </div>
+                {form.marketplaces_config.mercado_livre.enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <Label className="text-xs">Access Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="APP_USR-..."
+                        value={form.marketplaces_config.mercado_livre.access_token}
+                        onChange={(e) => updateMarketplace('mercado_livre', 'access_token', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">User ID</Label>
+                      <Input
+                        placeholder="ID do vendedor"
+                        value={form.marketplaces_config.mercado_livre.user_id}
+                        onChange={(e) => updateMarketplace('mercado_livre', 'user_id', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Shopee */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded bg-orange-500 flex items-center justify-center">
+                      <span className="text-[9px] font-bold text-white">S</span>
+                    </div>
+                    <span className="font-medium text-sm">Shopee</span>
+                  </div>
+                  <Switch
+                    checked={!!form.marketplaces_config.shopee.enabled}
+                    onCheckedChange={(v) => updateMarketplace('shopee', 'enabled', v)}
+                  />
+                </div>
+                {form.marketplaces_config.shopee.enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <Label className="text-xs">Shop ID</Label>
+                      <Input
+                        placeholder="ID da loja Shopee"
+                        value={form.marketplaces_config.shopee.shop_id}
+                        onChange={(e) => updateMarketplace('shopee', 'shop_id', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Access Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="Token de acesso Shopee"
+                        value={form.marketplaces_config.shopee.access_token}
+                        onChange={(e) => updateMarketplace('shopee', 'access_token', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Amazon */}
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 rounded bg-amber-900 flex items-center justify-center">
+                      <span className="text-[9px] font-bold text-white">A</span>
+                    </div>
+                    <span className="font-medium text-sm">Amazon</span>
+                  </div>
+                  <Switch
+                    checked={!!form.marketplaces_config.amazon.enabled}
+                    onCheckedChange={(v) => updateMarketplace('amazon', 'enabled', v)}
+                  />
+                </div>
+                {form.marketplaces_config.amazon.enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <Label className="text-xs">Seller ID</Label>
+                      <Input
+                        placeholder="ID do vendedor Amazon"
+                        value={form.marketplaces_config.amazon.seller_id}
+                        onChange={(e) => updateMarketplace('amazon', 'seller_id', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Access Token (MWS/SP-API)</Label>
+                      <Input
+                        type="password"
+                        placeholder="Token de acesso Amazon"
+                        value={form.marketplaces_config.amazon.access_token}
+                        onChange={(e) => updateMarketplace('amazon', 'access_token', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>
