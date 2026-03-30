@@ -1,0 +1,57 @@
+{
+  "name": "MarketplaceLog",
+  "type": "object",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "teste_conexao",
+        "importacao",
+        "exportacao",
+        "atualizacao"
+      ],
+      "description": "Tipo de opera\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sucesso",
+        "erro",
+        "pendente",
+        "processando"
+      ],
+      "description": "Status da opera\u00e7\u00e3o"
+    },
+    "marketplace": {
+      "type": "string",
+      "enum": [
+        "mercado_livre",
+        "shopee",
+        "amazon",
+        "magalu",
+        "americanas"
+      ]
+    },
+    "company_id": {
+      "type": "string"
+    },
+    "company_name": {
+      "type": "string"
+    },
+    "produto": {
+      "type": "string",
+      "description": "Nome ou ID do produto"
+    },
+    "mensagem": {
+      "type": "string"
+    },
+    "detalhes": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "tipo",
+    "status",
+    "marketplace"
+  ]
+}

@@ -4,9 +4,14 @@ import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Store, ExternalLink, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Store, ExternalLink, Wifi, Download, Upload, ClipboardList } from 'lucide-react';
+import ConnectionTester from '@/components/marketplaces/ConnectionTester';
+import ImportProducts from '@/components/marketplaces/ImportProducts';
+import ExportProducts from '@/components/marketplaces/ExportProducts';
+import OperationLogs from '@/components/marketplaces/OperationLogs';
 
 const marketplaceNames = {
   mercado_livre: 'Mercado Livre',
@@ -66,6 +71,7 @@ export default function Marketplaces() {
         </p>
       </div>
 
+      {/* Stats cards — mantidos */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {marketplaceStats.map((mp) => (
           <Card key={mp.id}>
@@ -93,98 +99,152 @@ export default function Marketplaces() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Integrações por Empresa</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-4">
-            Configure as integrações dos marketplaces em cada empresa na página de <a href="/empresas" className="text-primary underline">Empresas</a>.
-            Os pedidos dos marketplaces serão sincronizados automaticamente e as notas fiscais podem ser emitidas via Bling.
-          </p>
-          {activeCompanies.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa selecionada</p>
-          ) : (
-            <div className="space-y-3">
-              {activeCompanies.map((c) => (
-                <div key={c.id} className="p-4 border rounded-lg">
-                  <h4 className="font-semibold text-sm mb-2">{c.nome_fantasia || c.razao_social}</h4>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant={c.bling_integrated ? 'default' : 'secondary'} className="text-[10px]">
-                      Bling: {c.bling_integrated ? 'Conectado' : 'Desconectado'}
-                    </Badge>
-                    <Badge variant={c.marketplaces_config?.mercado_livre?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                      ML: {c.marketplaces_config?.mercado_livre?.enabled ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                    <Badge variant={c.marketplaces_config?.shopee?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                      Shopee: {c.marketplaces_config?.shopee?.enabled ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                    <Badge variant={c.marketplaces_config?.amazon?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                      Amazon: {c.marketplaces_config?.amazon?.enabled ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Tabs com as novas funcionalidades */}
+      <Tabs defaultValue="contas">
+        <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="contas" className="gap-1.5 text-xs">
+            <Store className="w-3.5 h-3.5" /> Contas
+          </TabsTrigger>
+          <TabsTrigger value="testar" className="gap-1.5 text-xs">
+            <Wifi className="w-3.5 h-3.5" /> Testar Conexão
+          </TabsTrigger>
+          <TabsTrigger value="importar" className="gap-1.5 text-xs">
+            <Download className="w-3.5 h-3.5" /> Importar Produtos
+          </TabsTrigger>
+          <TabsTrigger value="exportar" className="gap-1.5 text-xs">
+            <Upload className="w-3.5 h-3.5" /> Exportar Produtos
+          </TabsTrigger>
+          <TabsTrigger value="anuncios" className="gap-1.5 text-xs">
+            <Store className="w-3.5 h-3.5" /> Anúncios
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="gap-1.5 text-xs">
+            <ClipboardList className="w-3.5 h-3.5" /> Logs
+          </TabsTrigger>
+        </TabsList>
 
-      {listings.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Anúncios</CardTitle>
-          </CardHeader>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Produto</TableHead>
-                  <TableHead>Marketplace</TableHead>
-                  <TableHead className="text-right">Preço</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Última Sync</TableHead>
-                  <TableHead className="w-10"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {listings.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell className="text-sm font-medium">{l.product_name}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-[10px]">
-                        {marketplaceNames[l.marketplace] || l.marketplace}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-sm">
-                      {l.preco_anuncio ? `R$ ${l.preco_anuncio.toFixed(2)}` : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusColors[l.status] || 'secondary'} className="text-[10px] capitalize">
-                        {l.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {l.ultima_sync ? new Date(l.ultima_sync).toLocaleDateString('pt-BR') : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {l.url_anuncio && (
-                        <a href={l.url_anuncio} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </Button>
-                        </a>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      )}
+        {/* Contas — mantido */}
+        <TabsContent value="contas" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Integrações por Empresa</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-4">
+                Configure as integrações dos marketplaces em cada empresa na página de{' '}
+                <a href="/empresas" className="text-primary underline">Empresas</a>.
+              </p>
+              {activeCompanies.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa selecionada</p>
+              ) : (
+                <div className="space-y-3">
+                  {activeCompanies.map((c) => (
+                    <div key={c.id} className="p-4 border rounded-lg">
+                      <h4 className="font-semibold text-sm mb-2">{c.nome_fantasia || c.razao_social}</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={c.bling_integrated ? 'default' : 'secondary'} className="text-[10px]">
+                          Bling: {c.bling_integrated ? 'Conectado' : 'Desconectado'}
+                        </Badge>
+                        <Badge variant={c.marketplaces_config?.mercado_livre?.enabled ? 'default' : 'secondary'} className="text-[10px]">
+                          ML: {c.marketplaces_config?.mercado_livre?.enabled ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                        <Badge variant={c.marketplaces_config?.shopee?.enabled ? 'default' : 'secondary'} className="text-[10px]">
+                          Shopee: {c.marketplaces_config?.shopee?.enabled ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                        <Badge variant={c.marketplaces_config?.amazon?.enabled ? 'default' : 'secondary'} className="text-[10px]">
+                          Amazon: {c.marketplaces_config?.amazon?.enabled ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Testar Conexão */}
+        <TabsContent value="testar" className="mt-4">
+          <ConnectionTester companies={activeCompanies} />
+        </TabsContent>
+
+        {/* Importar Produtos */}
+        <TabsContent value="importar" className="mt-4">
+          <ImportProducts companies={activeCompanies} />
+        </TabsContent>
+
+        {/* Exportar Produtos */}
+        <TabsContent value="exportar" className="mt-4">
+          <ExportProducts companies={activeCompanies} selectedCompany={selectedCompany} />
+        </TabsContent>
+
+        {/* Anúncios — mantido */}
+        <TabsContent value="anuncios" className="mt-4">
+          {listings.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground text-sm">
+                Nenhum anúncio encontrado. Exporte produtos para criar anúncios.
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Anúncios</CardTitle>
+              </CardHeader>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Produto</TableHead>
+                      <TableHead>Marketplace</TableHead>
+                      <TableHead className="text-right">Preço</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Última Sync</TableHead>
+                      <TableHead className="w-10"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {listings.map((l) => (
+                      <TableRow key={l.id}>
+                        <TableCell className="text-sm font-medium">{l.product_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]">
+                            {marketplaceNames[l.marketplace] || l.marketplace}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right text-sm">
+                          {l.preco_anuncio ? `R$ ${l.preco_anuncio.toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusColors[l.status] || 'secondary'} className="text-[10px] capitalize">
+                            {l.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {l.ultima_sync ? new Date(l.ultima_sync).toLocaleDateString('pt-BR') : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {l.url_anuncio && (
+                            <a href={l.url_anuncio} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Button>
+                            </a>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Logs */}
+        <TabsContent value="logs" className="mt-4">
+          <OperationLogs />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
