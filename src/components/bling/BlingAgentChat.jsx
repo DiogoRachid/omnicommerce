@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Send, Bot, User, Loader2, MessageSquare } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
-const AGENT_NAME = '69c2868206172b3f55e13887';
+const AGENT_NAME = 'bling_integration';
 
 const QUICK_ACTIONS = [
   { label: 'Status da conexão', prompt: 'Verifique o status da conexão com o Bling e informe se está tudo ok.' },
