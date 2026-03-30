@@ -11,7 +11,6 @@ import {
   Package, Download, CheckCircle2, AlertCircle, Loader2,
   RefreshCw, Trash2
 } from 'lucide-react';
-import { askBlingAgent } from '@/lib/blingAgent';
 
 function mapBlingProduct(bp, companyId) {
   const dim = bp.dimensoes || {};
@@ -61,7 +60,8 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setError('');
     setTestStatus(null);
     try {
-      await askBlingAgent('Verifique o status da conexão com o Bling. Responda apenas: "ok" se conectado, ou "erro" com a mensagem de erro.');
+      const tokens = await base44.entities.BlingToken.list();
+      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling nas configurações.');
       setTestStatus('ok');
     } catch (e) {
       setError('Falha na conexão: ' + e.message);
@@ -70,49 +70,43 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setTesting(false);
   };
 
+  const fetchBlingPage = async (accessToken, page) => {
+    const resp = await fetch(
+      `https://www.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&situacao=A`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!resp.ok) throw new Error(`Erro API Bling: ${resp.status}`);
+    const data = await resp.json();
+    return data.data || [];
+  };
+
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
     setBlingProducts([]);
     setSelected({});
     try {
-      const raw = await askBlingAgent(
-        `Busque TODOS os produtos do Bling usando a API (todas as páginas, até 500 produtos).
-IMPORTANTE: Responda APENAS com um array JSON puro, sem texto, sem markdown, sem explicações.
-Formato obrigatório (array JSON direto):
-[{"id":"123","nome":"Produto X","codigo":"SKU001","gtin":"","preco":99.90,"situacao":"A","marca":"","unidade":"UN","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0},"midia":{"imagens":{"externas":[]}},"descricaoCurta":""}]
-Não adicione NENHUM texto antes ou depois do JSON.`
-      );
+      // Busca o token salvo no banco
+      const tokens = await base44.entities.BlingToken.list();
+      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling nas configurações.');
+      const { access_token } = tokens[0];
 
-      // Extrai o array JSON da resposta com múltiplas estratégias
-      let items = null;
-
-      // Tenta bloco de código
-      const codeBlock = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (codeBlock) {
-        try { items = JSON.parse(codeBlock[1].trim()); } catch {}
+      // Busca produtos em múltiplas páginas
+      let allProducts = [];
+      let page = 1;
+      while (page <= 10) { // máximo 1000 produtos
+        const items = await fetchBlingPage(access_token, page);
+        if (!items.length) break;
+        allProducts = [...allProducts, ...items];
+        if (items.length < 100) break;
+        page++;
       }
 
-      // Tenta array direto
-      if (!items) {
-        const arrMatch = raw.match(/(\[[\s\S]*\])/);
-        if (arrMatch) {
-          try { items = JSON.parse(arrMatch[1]); } catch {}
-        }
-      }
+      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling.');
 
-      // Tenta parsear raw inteiro
-      if (!items) {
-        try { items = JSON.parse(raw.trim()); } catch {}
-      }
-
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        throw new Error('Nenhum produto encontrado no Bling. Resposta: ' + raw.substring(0, 200));
-      }
-
-      setBlingProducts(items);
+      setBlingProducts(allProducts);
       const sel = {};
-      items.forEach(p => { sel[p.id] = true; });
+      allProducts.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
       setStep('preview');
     } catch (e) {
