@@ -11,7 +11,7 @@ import {
   Package, Download, CheckCircle2, AlertCircle, Loader2,
   RefreshCw, Trash2
 } from 'lucide-react';
-import { askBlingAgent, askBlingAgentJSON } from '@/lib/blingAgent';
+import { askBlingAgent } from '@/lib/blingAgent';
 
 function mapBlingProduct(bp, companyId) {
   const dim = bp.dimensoes || {};
@@ -76,31 +76,39 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setBlingProducts([]);
     setSelected({});
     try {
-      const result = await askBlingAgentJSON(
-        `Liste TODOS os produtos ativos do Bling (use paginação se necessário, até 500 produtos).
-Retorne um JSON no formato:
-\`\`\`json
-[
-  {
-    "id": "123",
-    "nome": "Produto X",
-    "codigo": "SKU001",
-    "gtin": "7891234567890",
-    "preco": 99.90,
-    "situacao": "A",
-    "marca": "Marca",
-    "unidade": "UN",
-    "tributacao": { "ncm": "6402", "cest": "" },
-    "dimensoes": { "pesoBruto": 0.5, "pesoLiquido": 0.4, "altura": 10, "largura": 15, "profundidade": 20 },
-    "midia": { "imagens": { "externas": [] } },
-    "descricaoCurta": ""
-  }
-]
-\`\`\``
+      const raw = await askBlingAgent(
+        `Busque TODOS os produtos do Bling usando a API (todas as páginas, até 500 produtos).
+IMPORTANTE: Responda APENAS com um array JSON puro, sem texto, sem markdown, sem explicações.
+Formato obrigatório (array JSON direto):
+[{"id":"123","nome":"Produto X","codigo":"SKU001","gtin":"","preco":99.90,"situacao":"A","marca":"","unidade":"UN","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0},"midia":{"imagens":{"externas":[]}},"descricaoCurta":""}]
+Não adicione NENHUM texto antes ou depois do JSON.`
       );
 
-      const items = Array.isArray(result) ? result : (result.data || []);
-      if (items.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
+      // Extrai o array JSON da resposta com múltiplas estratégias
+      let items = null;
+
+      // Tenta bloco de código
+      const codeBlock = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlock) {
+        try { items = JSON.parse(codeBlock[1].trim()); } catch {}
+      }
+
+      // Tenta array direto
+      if (!items) {
+        const arrMatch = raw.match(/(\[[\s\S]*\])/);
+        if (arrMatch) {
+          try { items = JSON.parse(arrMatch[1]); } catch {}
+        }
+      }
+
+      // Tenta parsear raw inteiro
+      if (!items) {
+        try { items = JSON.parse(raw.trim()); } catch {}
+      }
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        throw new Error('Nenhum produto encontrado no Bling. Resposta: ' + raw.substring(0, 200));
+      }
 
       setBlingProducts(items);
       const sel = {};
