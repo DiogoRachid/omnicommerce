@@ -4,7 +4,8 @@
  */
 import { base44 } from '@/api/base44Client';
 
-const AGENT_NAME = '69c2868206172b3f55e13887';
+// Agente interno do app com acesso ao BlingToken
+const AGENT_NAME = 'bling_integration';
 
 /**
  * Envia um comando ao agente e aguarda a resposta completa.
