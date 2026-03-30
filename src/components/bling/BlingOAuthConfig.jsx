@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Loader2, MessageSquare } from 'lucide-react';
-import { askBlingAgent } from '@/lib/blingAgent';
+import { base44 } from '@/api/base44Client';
 
 const BLING_AUTH_URL = 'https://www.bling.com.br/OAuth2/Auth';
 const CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
@@ -16,13 +16,22 @@ export default function BlingOAuthConfig() {
 
   const checkStatus = async () => {
     setStatus('loading');
-    setStatusMsg('Verificando conexão via agente...');
+    setStatusMsg('Verificando token...');
     try {
-      const resp = await askBlingAgent(
-        'Verifique o status atual da conexão OAuth2 com o Bling. Informe se está conectado, se o token está válido ou expirado, e a conta conectada.'
+      const tokens = await base44.entities.BlingToken.list();
+      if (!tokens || tokens.length === 0) {
+        setStatus('error');
+        setStatusMsg('Nenhum token Bling encontrado. Clique em "Autorizar / Reconectar Bling" para conectar.');
+        return;
+      }
+      const t = tokens[0];
+      const expiresAt = t.expires_at ? new Date(t.expires_at) : null;
+      const expired = expiresAt && expiresAt < new Date();
+      setStatus(expired ? 'error' : 'ok');
+      setStatusMsg(expired
+        ? `Token expirado em ${expiresAt.toLocaleString('pt-BR')}. Reconecte o Bling.`
+        : `Conectado! Conta: ${t.account || 'N/A'}. Token válido até ${expiresAt ? expiresAt.toLocaleString('pt-BR') : 'indeterminado'}.`
       );
-      setStatus('ok');
-      setStatusMsg(resp);
     } catch (e) {
       setStatus('error');
       setStatusMsg('Erro ao verificar: ' + e.message);
