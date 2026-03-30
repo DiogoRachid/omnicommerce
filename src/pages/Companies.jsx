@@ -281,20 +281,20 @@ export default function Companies() {
                 {form.marketplaces_config.mercado_livre.enabled && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <Label className="text-xs">Access Token</Label>
+                      <Label className="text-xs">App ID (ID do Aplicativo)</Label>
                       <Input
-                        type="password"
-                        placeholder="APP_USR-..."
-                        value={form.marketplaces_config.mercado_livre.access_token}
-                        onChange={(e) => updateMarketplace('mercado_livre', 'access_token', e.target.value)}
+                        placeholder="Ex: 510111497386242"
+                        value={form.marketplaces_config.mercado_livre.user_id}
+                        onChange={(e) => updateMarketplace('mercado_livre', 'user_id', e.target.value)}
                       />
                     </div>
                     <div>
-                      <Label className="text-xs">User ID</Label>
+                      <Label className="text-xs">Chave Secreta (Client Secret)</Label>
                       <Input
-                        placeholder="ID do vendedor"
-                        value={form.marketplaces_config.mercado_livre.user_id}
-                        onChange={(e) => updateMarketplace('mercado_livre', 'user_id', e.target.value)}
+                        type="password"
+                        placeholder="Ex: Hx4Uth2MPZ581dj..."
+                        value={form.marketplaces_config.mercado_livre.access_token}
+                        onChange={(e) => updateMarketplace('mercado_livre', 'access_token', e.target.value)}
                       />
                     </div>
                   </div>
