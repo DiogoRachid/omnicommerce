@@ -4,7 +4,7 @@
  */
 import { base44 } from '@/api/base44Client';
 
-const AGENT_NAME = 'bling_integration';
+const AGENT_NAME = '69c2868206172b3f55e13887';
 
 /**
  * Envia um comando ao agente e aguarda a resposta completa.

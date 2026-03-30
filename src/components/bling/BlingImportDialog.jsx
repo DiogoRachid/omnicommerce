@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import { askBlingAgentJSON } from '@/lib/blingAgent';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -76,48 +77,16 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setBlingProducts([]);
     setSelected({});
     try {
-      // Busca o token salvo no banco
-      const tokens = await base44.entities.BlingToken.list();
-      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling nas configurações.');
-      const { access_token } = tokens[0];
+      // Usa o superagente externo que tem acesso real à API do Bling
+      const allProducts = await askBlingAgentJSON(
+        `Liste TODOS os produtos ativos do Bling (situação=A). Faça quantas páginas forem necessárias.
+Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
+[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]`
+      );
 
-      // Usa InvokeLLM para fazer a chamada HTTP server-side (evita CORS)
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Faça uma requisição HTTP GET para a URL: https://www.bling.com.br/Api/v3/produtos?pagina=1&limite=100&situacao=A
-Com o header: Authorization: Bearer ${access_token}
-
-Retorne APENAS o JSON da resposta da API, sem nenhum texto adicional.`,
-        add_context_from_internet: true,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            data: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  id: { type: 'number' },
-                  nome: { type: 'string' },
-                  codigo: { type: 'string' },
-                  gtin: { type: 'string' },
-                  preco: { type: 'number' },
-                  situacao: { type: 'string' },
-                  marca: { type: 'string' },
-                  unidade: { type: 'string' },
-                  descricaoCurta: { type: 'string' },
-                  tributacao: { type: 'object', properties: { ncm: { type: 'string' }, cest: { type: 'string' } } },
-                  dimensoes: { type: 'object', properties: { pesoBruto: { type: 'number' }, pesoLiquido: { type: 'number' }, altura: { type: 'number' }, largura: { type: 'number' }, profundidade: { type: 'number' } } },
-                  midia: { type: 'object' }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      const allProducts = result?.data || [];
-
-      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling. Verifique se o token está válido.');
+      if (!Array.isArray(allProducts) || allProducts.length === 0) {
+        throw new Error('Nenhum produto ativo encontrado no Bling.');
+      }
 
       setBlingProducts(allProducts);
       const sel = {};
