@@ -11,22 +11,7 @@ import {
   Package, Download, CheckCircle2, AlertCircle, Loader2,
   RefreshCw, Trash2
 } from 'lucide-react';
-
-// Usa InvokeLLM como proxy para evitar bloqueio CORS
-async function blingGet(path, accessToken) {
-  return await base44.integrations.Core.InvokeLLM({
-    prompt: `Faça uma requisição HTTP GET para a URL exata: https://www.bling.com.br/Api/v3${path}
-Use o header: Authorization: Bearer ${accessToken}
-Retorne EXATAMENTE o JSON da resposta sem nenhuma modificação ou comentário.`,
-    response_json_schema: {
-      type: 'object',
-      properties: {
-        data: { type: 'array', items: { type: 'object' } },
-        error: { type: 'object' }
-      }
-    }
-  });
-}
+import { askBlingAgent, askBlingAgentJSON } from '@/lib/blingAgent';
 
 function mapBlingProduct(bp, companyId) {
   const dim = bp.dimensoes || {};
@@ -68,36 +53,16 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
-  const [accessToken, setAccessToken] = useState(null);
   const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState(null); // null | 'ok' | 'fail'
-
-  // Busca o access_token OAuth2 da entidade BlingToken
-  useEffect(() => {
-    if (open) {
-      base44.entities.BlingToken.list('-created_date', 1).then(records => {
-        const token = records?.[0];
-        if (token?.access_token) setAccessToken(token.access_token);
-        else setError('Token Bling não encontrado. Configure a integração OAuth2 nas Configurações.');
-      });
-    }
-  }, [open]);
+  const [testStatus, setTestStatus] = useState(null);
 
   const testConnection = async () => {
-    if (!accessToken) {
-      setError('Token OAuth2 não disponível. Configure nas Configurações.');
-      return;
-    }
     setTesting(true);
     setError('');
     setTestStatus(null);
     try {
-      const json = await blingGet('/produtos?pagina=1&limite=1', accessToken);
-      if (json?.data !== undefined) {
-        setTestStatus('ok');
-      } else {
-        throw new Error('Resposta inesperada do Bling');
-      }
+      await askBlingAgent('Verifique o status da conexão com o Bling. Responda apenas: "ok" se conectado, ou "erro" com a mensagem de erro.');
+      setTestStatus('ok');
     } catch (e) {
       setError('Falha na conexão: ' + e.message);
       setTestStatus('fail');
@@ -106,30 +71,40 @@ export default function BlingImportDialog({ company, open, onClose }) {
   };
 
   const fetchProducts = async () => {
-    if (!accessToken) {
-      setError('Token OAuth2 não disponível. Configure nas Configurações.');
-      return;
-    }
     setStep('loading');
     setError('');
     setBlingProducts([]);
     setSelected({});
     try {
-      let all = [];
-      let page = 1;
-      while (true) {
-        const json = await blingGet(`/produtos?pagina=${page}&limite=100&criterio=1`, accessToken);
-        const items = json?.data || [];
-        if (items.length === 0) break;
-        all = [...all, ...items];
-        if (items.length < 100) break;
-        page++;
-        if (page > 20) break;
-      }
-      if (all.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
-      setBlingProducts(all);
+      const result = await askBlingAgentJSON(
+        `Liste TODOS os produtos ativos do Bling (use paginação se necessário, até 500 produtos).
+Retorne um JSON no formato:
+\`\`\`json
+[
+  {
+    "id": "123",
+    "nome": "Produto X",
+    "codigo": "SKU001",
+    "gtin": "7891234567890",
+    "preco": 99.90,
+    "situacao": "A",
+    "marca": "Marca",
+    "unidade": "UN",
+    "tributacao": { "ncm": "6402", "cest": "" },
+    "dimensoes": { "pesoBruto": 0.5, "pesoLiquido": 0.4, "altura": 10, "largura": 15, "profundidade": 20 },
+    "midia": { "imagens": { "externas": [] } },
+    "descricaoCurta": ""
+  }
+]
+\`\`\``
+      );
+
+      const items = Array.isArray(result) ? result : (result.data || []);
+      if (items.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
+
+      setBlingProducts(items);
       const sel = {};
-      all.forEach(p => { sel[p.id] = true; });
+      items.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
       setStep('preview');
     } catch (e) {
@@ -158,14 +133,8 @@ export default function BlingImportDialog({ company, open, onClose }) {
       setProgress(Math.round(((i + 1) / toImport.length) * 100));
       setProgressLabel(`Importando ${i + 1} de ${toImport.length}: ${bp.nome}`);
 
-      let detail = null;
       try {
-        const detailJson = await blingGet(`/produtos/${bp.id}`, accessToken);
-        detail = detailJson?.data || null;
-      } catch {}
-
-      try {
-        await base44.entities.Product.create(mapBlingProduct(detail || bp, company?.id));
+        await base44.entities.Product.create(mapBlingProduct(bp, company?.id));
         created++;
       } catch { errors++; }
     }
@@ -233,7 +202,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
               <div>
                 <h3 className="font-semibold text-base">Buscar produtos do Bling</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Conectado via API Key da empresa <strong>{company?.nome_fantasia || company?.razao_social}</strong>
+                  Via Superagent Base44 — <strong>{company?.nome_fantasia || company?.razao_social}</strong>
                 </p>
               </div>
               <div className="flex gap-3 justify-center">
@@ -252,7 +221,8 @@ export default function BlingImportDialog({ company, open, onClose }) {
           {step === 'loading' && (
             <div className="text-center py-12 space-y-3">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
-              <p className="text-sm text-muted-foreground">Buscando produtos no Bling...</p>
+              <p className="text-sm text-muted-foreground">Buscando produtos no Bling via agente...</p>
+              <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos</p>
             </div>
           )}
 

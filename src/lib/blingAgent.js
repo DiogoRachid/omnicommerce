@@ -1,0 +1,74 @@
+/**
+ * Serviço centralizado para comunicação com o Superagent do Bling
+ * Agent ID: 69c2868206172b3f55e13887
+ */
+import { base44 } from '@/api/base44Client';
+
+const AGENT_NAME = '69c2868206172b3f55e13887';
+
+/**
+ * Envia um comando ao agente e aguarda a resposta completa.
+ * Retorna o conteúdo da última mensagem do agente.
+ */
+export async function askBlingAgent(prompt) {
+  const conversation = await base44.agents.createConversation({
+    agent_name: AGENT_NAME,
+  });
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+
+    const unsubscribe = base44.agents.subscribeToConversation(
+      conversation.id,
+      (data) => {
+        const messages = data.messages || [];
+        const lastMsg = messages[messages.length - 1];
+
+        // Quando o agente responder (role=assistant e não estiver vazio)
+        if (lastMsg?.role === 'assistant' && lastMsg?.content && !resolved) {
+          // Verifica se não há tool calls ainda em execução
+          const hasRunningTools = (lastMsg.tool_calls || []).some(
+            (tc) => tc.status === 'running' || tc.status === 'in_progress'
+          );
+          if (!hasRunningTools) {
+            resolved = true;
+            unsubscribe();
+            resolve(lastMsg.content);
+          }
+        }
+      }
+    );
+
+    base44.agents.addMessage(conversation, {
+      role: 'user',
+      content: prompt,
+    }).catch((err) => {
+      unsubscribe();
+      reject(err);
+    });
+
+    // Timeout de segurança: 120s
+    setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsubscribe();
+        reject(new Error('Timeout: o agente não respondeu em 120 segundos.'));
+      }
+    }, 120000);
+  });
+}
+
+/**
+ * Envia um comando ao agente esperando JSON estruturado como resposta.
+ * @param {string} prompt
+ * @returns {Promise<any>} objeto JSON parseado
+ */
+export async function askBlingAgentJSON(prompt) {
+  const raw = await askBlingAgent(prompt);
+  // Tenta extrair JSON da resposta
+  const match = raw.match(/```json\n?([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+  if (match) {
+    return JSON.parse(match[1] || match[0]);
+  }
+  return JSON.parse(raw);
+}
