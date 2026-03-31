@@ -4,10 +4,11 @@ Deno.serve(async (req) => {
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
-  // Monta a URL de redirecionamento para o frontend
-  const appUrl = Deno.env.get('APP_BASE_URL') || 'https://preview-sandbox--69c847515e26f8ca005176ef.base44.app';
-  
-  const redirectUrl = new URL('/empresas', appUrl);
+  // URL do frontend — derivada do próprio host da função (mesmo domínio base44)
+  const appId = Deno.env.get('BASE44_APP_ID');
+  const appUrl = `https://app.base44.com/apps/${appId}`;
+
+  const redirectUrl = new URL('/empresas', 'https://preview-sandbox--' + appId + '.base44.app');
   if (code) redirectUrl.searchParams.set('code', code);
   if (state) redirectUrl.searchParams.set('state', state);
   if (error) redirectUrl.searchParams.set('error', error);

@@ -6,7 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Loader2, Info } from 'lucide-react';
 
 const BLING_AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
-const BLING_REDIRECT_URI = `${window.location.origin}/empresas`;
+const BLING_REDIRECT_URI = `https://api.base44.com/api/apps/prod/69c847515e26f8ca005176ef/functions/blingCallback`;
 
 export default function BlingCompanyConfig({ company }) {
   const [status, setStatus] = useState(null); // null | 'loading' | 'ok' | 'error'
