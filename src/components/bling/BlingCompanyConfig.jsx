@@ -106,13 +106,13 @@ export default function BlingCompanyConfig({ company }) {
       setStatusMsg('Configure o Client ID do Bling antes de conectar.');
       return;
     }
-    // Conforme documentação Bling: NÃO enviar redirect_uri na URL (é configurado no cadastro do app)
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: company.bling_client_id,
       state: `bling_${company.id}`,
     });
-    window.location.href = `${BLING_AUTH_URL}?${params.toString()}`;
+    // Abre em nova aba para evitar bloqueio de iframe
+    window.open(`${BLING_AUTH_URL}?${params.toString()}`, '_blank');
   };
 
   const hasCredentials = !!(company?.bling_client_id && company?.bling_client_secret);
