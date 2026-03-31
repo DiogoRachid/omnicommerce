@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Settings as SettingsIcon, Building2, Store, FileText, Bot } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import BlingOAuthConfig from '@/components/bling/BlingOAuthConfig';
-import BlingAgentChat from '@/components/bling/BlingAgentChat';
 
 const settingsItems = [
   {
@@ -59,7 +58,6 @@ export default function Settings() {
       </div>
 
       <BlingOAuthConfig />
-      <BlingAgentChat />
 
       <Card>
         <CardHeader>
