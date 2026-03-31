@@ -5,14 +5,10 @@ Deno.serve(async (req) => {
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
-  // Usa o APP_BASE_URL configurado, ou detecta pelo Referer/Origin
-  const appBaseUrl = Deno.env.get('APP_BASE_URL') || 
-    (() => {
-      const ref = req.headers.get('referer') || req.headers.get('origin') || '';
-      try { return new URL(ref).origin; } catch { return ''; }
-    })();
+  // URL base fixa do app Base44
+  const appBaseUrl = 'https://app.base44.com/OmniCommerce';
 
-  const redirectUrl = new URL('/empresas', appBaseUrl || 'https://app.base44.com');
+  const redirectUrl = new URL('/empresas', appBaseUrl);
   if (code) redirectUrl.searchParams.set('code', code);
   if (state) redirectUrl.searchParams.set('state', state);
   if (error) redirectUrl.searchParams.set('error', error);
