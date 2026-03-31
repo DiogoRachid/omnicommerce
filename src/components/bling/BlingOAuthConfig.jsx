@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,26 +16,7 @@ export default function BlingOAuthConfig() {
   const [statusMsg, setStatusMsg] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  // Auto-refresh: verifica a cada 30 minutos se o token está próximo de expirar
-  useEffect(() => {
-    const autoRefresh = async () => {
-      try {
-        const tokens = await base44.entities.BlingToken.list();
-        if (!tokens || tokens.length === 0) return;
-        const t = tokens[0];
-        const expiresAt = t.expires_at ? new Date(t.expires_at) : null;
-        if (!expiresAt) return;
-        const minutesLeft = (expiresAt - new Date()) / 1000 / 60;
-        // Renova se faltar menos de 60 minutos
-        if (minutesLeft < 60) {
-          await doRefresh(t, true);
-        }
-      } catch {}
-    };
-    autoRefresh();
-    const interval = setInterval(autoRefresh, 30 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+
 
   const doRefresh = async (tokenRecord, silent = false) => {
     if (!silent) setRefreshing(true);
@@ -150,9 +131,9 @@ Se der erro, retorne: {"error": "mensagem do erro"}.`,
           <div className="w-6 h-6 rounded bg-orange-500 flex items-center justify-center">
             <span className="text-white text-[10px] font-bold">B</span>
           </div>
-          Integração Bling — Superagent Base44
+          Integração Bling
           <Badge className="bg-orange-100 text-orange-700 border-orange-200 ml-auto text-xs">
-            Agente Conectado
+            OAuth2
           </Badge>
         </CardTitle>
       </CardHeader>
@@ -171,15 +152,6 @@ Se der erro, retorne: {"error": "mensagem do erro"}.`,
             </AlertDescription>
           </Alert>
         )}
-
-        <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-          <p className="font-medium">Renovação automática de token</p>
-          <p className="text-muted-foreground text-xs">
-            O sistema verifica automaticamente a cada <strong>30 minutos</strong> se o token está próximo de expirar.
-            Se restar menos de <strong>60 minutos</strong> de validade, o token é renovado automaticamente usando o <em>refresh_token</em>.
-            Você também pode clicar em <strong>"Renovar Token"</strong> a qualquer momento.
-          </p>
-        </div>
 
         <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
           <p className="font-medium mb-1">URL de Redirecionamento OAuth2 (configure no Bling):</p>

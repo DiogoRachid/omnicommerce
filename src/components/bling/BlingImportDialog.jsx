@@ -9,7 +9,6 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Download, CheckCircle2, AlertCircle, Loader2, RefreshCw, Trash2, Settings2, ArrowRight } from 'lucide-react';
-import { askBlingAgentJSON } from '@/lib/blingAgent';
 
 // Campos do sistema
 const SYSTEM_FIELDS = [
@@ -116,7 +115,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
 
-  // Busca produtos via agente Bling (que tem acesso real à API via OAuth2)
+  // Busca produtos diretamente via InvokeLLM com acesso à internet (gemini suporta requisições reais)
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
@@ -124,41 +123,44 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setSelected({});
     setRawSample(null);
     try {
-      const raw = await askBlingAgentJSON(
-        `INSTRUÇÃO CRÍTICA: Sua resposta deve conter APENAS o array JSON, sem nenhuma palavra antes ou depois.
-
-Acesse a API do Bling e liste os produtos ativos (situação=A), página 1, limite 100.
-GET https://www.bling.com.br/Api/v3/produtos?pagina=1&limite=100&situacao=A
-
-Retorne SOMENTE o array JSON dos produtos com esta estrutura exata:
-[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]
-
-NÃO escreva texto, explicação ou mensagem. APENAS o array JSON.`
-      );
-
-      const allProducts = Array.isArray(raw) ? raw : (raw?.data || raw?.produtos || []);
-
-      if (!Array.isArray(allProducts) || allProducts.length === 0) {
-        throw new Error(typeof raw === 'string' ? raw : 'Nenhum produto ativo encontrado no Bling.');
+      const tokens = await base44.entities.BlingToken.list();
+      if (!tokens || tokens.length === 0) {
+        throw new Error('Nenhum token Bling encontrado. Autorize o Bling em Configurações.');
       }
+      const accessToken = tokens[0].access_token;
 
-      // Guarda amostra real para mostrar no mapeamento
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os produtos.
+
+URL: https://www.bling.com.br/Api/v3/produtos?pagina=1&limite=100&situacao=A
+Header: Authorization: Bearer ${accessToken}
+
+Retorne os dados no campo "items" como array. Se der erro retorne campo "erro".`,
+        add_context_from_internet: true,
+        model: 'gemini_3_flash',
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            items: { type: 'array', items: { type: 'object' } },
+            erro: { type: 'string' },
+          },
+        },
+      });
+
+      if (result.erro) throw new Error(result.erro);
+
+      const allProducts = result.items || [];
+      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling.');
+
       setRawSample(allProducts[0]);
-
-      // Detecta se mapeamento precisa ser verificado
-      const sample = allProducts[0];
-      const hasMappingGap = !getNestedValue(sample, mapping.nome) && !getNestedValue(sample, mapping.sku);
-
       setBlingProducts(allProducts);
       const sel = {};
       allProducts.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
 
-      if (hasMappingGap) {
-        setStep('mapping');
-      } else {
-        setStep('preview');
-      }
+      const sample = allProducts[0];
+      const hasMappingGap = !getNestedValue(sample, mapping.nome) && !getNestedValue(sample, mapping.sku);
+      setStep(hasMappingGap ? 'mapping' : 'preview');
     } catch (e) {
       setError(e.message);
       setStep('idle');
@@ -248,7 +250,7 @@ NÃO escreva texto, explicação ou mensagem. APENAS o array JSON.`
               <div>
                 <h3 className="font-semibold text-base">Buscar produtos do Bling</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Chamada direta à API do Bling — <strong>{company?.nome_fantasia || company?.razao_social}</strong>
+                  Empresa: <strong>{company?.nome_fantasia || company?.razao_social}</strong>
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Busca apenas produtos com situação <strong>Ativo (A)</strong>
