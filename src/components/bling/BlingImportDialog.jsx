@@ -8,7 +8,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, Download, CheckCircle2, AlertCircle, Loader2, RefreshCw, Trash2, Settings2, ArrowRight } from 'lucide-react';
+import { Package, Download, CheckCircle2, AlertCircle, Loader2, RefreshCw, Trash2, Settings2, ArrowRight, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 // Campos do sistema
 const SYSTEM_FIELDS = [
@@ -115,7 +116,27 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
 
-  // Busca produtos diretamente via InvokeLLM com acesso à internet (gemini suporta requisições reais)
+  // Verifica se o token está válido antes de buscar
+  const validateToken = async () => {
+    const tokens = await base44.entities.BlingToken.list();
+    if (!tokens || tokens.length === 0) {
+      throw new Error('Nenhum token Bling encontrado. Acesse Configurações → Integração Bling e clique em "Autorizar / Reconectar Bling".');
+    }
+    const t = tokens[0];
+    if (t.expires_at) {
+      const expiresAt = new Date(t.expires_at);
+      const minutesLeft = Math.round((expiresAt - new Date()) / 1000 / 60);
+      if (expiresAt < new Date()) {
+        throw new Error(`Token Bling expirado em ${expiresAt.toLocaleString('pt-BR')}. Acesse Configurações → Integração Bling e clique em "Renovar Token" ou "Autorizar / Reconectar Bling".`);
+      }
+      if (minutesLeft < 5) {
+        throw new Error(`Token Bling expira em ${minutesLeft} minuto(s). Acesse Configurações → Integração Bling e clique em "Renovar Token".`);
+      }
+    }
+    return t;
+  };
+
+  // Busca produtos via agente bling_integration
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
@@ -123,11 +144,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setSelected({});
     setRawSample(null);
     try {
-      const tokens = await base44.entities.BlingToken.list();
-      if (!tokens || tokens.length === 0) {
-        throw new Error('Nenhum token Bling encontrado. Autorize o Bling em Configurações.');
-      }
-      const accessToken = tokens[0].access_token;
+      const tokenRecord = await validateToken();
 
       // Busca via agente bling_integration (único método que funciona sem CORS e com token real)
       const conversation = await base44.agents.createConversation({ agent_name: 'bling_integration' });
@@ -262,7 +279,16 @@ Formato: [{"id":123,"nome":"...","codigo":"...","preco":0,"situacao":"A","marca"
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription className="space-y-2">
+                    <p>{error}</p>
+                    {(error.includes('token') || error.includes('Token') || error.includes('Bling')) && (
+                      <Link to="/configuracoes" onClick={handleClose}>
+                        <Button size="sm" variant="outline" className="gap-1 border-destructive/40 text-destructive hover:bg-destructive/10 mt-1">
+                          <ExternalLink className="w-3 h-3" /> Ir para Configurações
+                        </Button>
+                      </Link>
+                    )}
+                  </AlertDescription>
                 </Alert>
               )}
               <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto">
