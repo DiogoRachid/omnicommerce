@@ -278,7 +278,7 @@ export default function Companies() {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <Label className="text-xs">URI de Redirecionamento</Label>
+                  <Label className="text-xs">Link de Redirecionamento (configure no Bling)</Label>
                   <div className="flex gap-2 mt-1">
                     <div className="flex-1 flex items-center h-9 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground font-mono overflow-hidden">
                       <span className="truncate">{BLING_REDIRECT_URI}</span>
@@ -289,7 +289,7 @@ export default function Companies() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Cole esta URI no campo "Link de redirecionamento" do seu aplicativo no Bling.
+                    Cole este valor no campo <strong>"Link de redirecionamento"</strong> no cadastro do seu aplicativo no Bling (Central de Extensões → Área do Integrador). Este valor é fixo e não precisa ser salvo aqui.
                   </p>
                 </div>
               </div>

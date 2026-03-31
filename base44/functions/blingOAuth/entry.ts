@@ -76,18 +76,18 @@ Deno.serve(async (req) => {
     const company = companies[0];
     const clientId = company.bling_client_id;
     const clientSecret = company.bling_client_secret;
-    const redirectUri = company.bling_redirect_uri || '';
 
     if (!clientId || !clientSecret) {
       return Response.json({ success: false, error: 'Client ID e Client Secret do Bling não configurados para esta empresa.' }, { status: 400 });
     }
 
     // Troca authorization_code por tokens
+    // Conforme documentação Bling: NÃO enviar redirect_uri (é configurado no cadastro do app)
     if (action === 'exchange_code') {
       if (!code) {
         return Response.json({ success: false, error: 'Parâmetro "code" obrigatório.' }, { status: 400 });
       }
-      const data = await exchangeToken('authorization_code', { code, redirect_uri: redirectUri }, clientId, clientSecret);
+      const data = await exchangeToken('authorization_code', { code }, clientId, clientSecret);
       const expiresAt = await saveToken(base44, data, company_id, company.nome_fantasia || company.razao_social);
       return Response.json({ success: true, expires_at: expiresAt });
     }
