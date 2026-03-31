@@ -124,14 +124,22 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setSelected({});
     setRawSample(null);
     try {
-      const allProducts = await askBlingAgentJSON(
-        `Liste TODOS os produtos ativos do Bling (situação=A). Faça quantas páginas forem necessárias.
-Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
-[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]`
+      const raw = await askBlingAgentJSON(
+        `INSTRUÇÃO CRÍTICA: Sua resposta deve conter APENAS o array JSON, sem nenhuma palavra antes ou depois.
+
+Acesse a API do Bling e liste os produtos ativos (situação=A), página 1, limite 100.
+GET https://www.bling.com.br/Api/v3/produtos?pagina=1&limite=100&situacao=A
+
+Retorne SOMENTE o array JSON dos produtos com esta estrutura exata:
+[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]
+
+NÃO escreva texto, explicação ou mensagem. APENAS o array JSON.`
       );
 
+      const allProducts = Array.isArray(raw) ? raw : (raw?.data || raw?.produtos || []);
+
       if (!Array.isArray(allProducts) || allProducts.length === 0) {
-        throw new Error('Nenhum produto ativo encontrado no Bling.');
+        throw new Error(typeof raw === 'string' ? raw : 'Nenhum produto ativo encontrado no Bling.');
       }
 
       // Guarda amostra real para mostrar no mapeamento

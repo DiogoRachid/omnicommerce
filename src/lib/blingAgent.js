@@ -86,5 +86,8 @@ export async function askBlingAgentJSON(prompt) {
   }
 
   // 4. Tenta parsear o raw inteiro
-  return JSON.parse(raw.trim());
+  try { return JSON.parse(raw.trim()); } catch {}
+
+  // 5. Retorna o texto como string para o chamador decidir o que fazer
+  return raw.trim();
 }
