@@ -129,28 +129,39 @@ export default function BlingImportDialog({ company, open, onClose }) {
       }
       const accessToken = tokens[0].access_token;
 
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os produtos.
+      // Busca paginada: até 10 páginas (1000 produtos)
+      let allProducts = [];
+      let page = 1;
+      let hasMore = true;
 
-URL: https://www.bling.com.br/Api/v3/produtos?pagina=1&limite=100&situacao=A
+      while (hasMore && page <= 10) {
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os produtos.
+
+URL: https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T
 Header: Authorization: Bearer ${accessToken}
 
-Retorne os dados no campo "items" como array. Se der erro retorne campo "erro".`,
-        add_context_from_internet: true,
-        model: 'gemini_3_flash',
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            items: { type: 'array', items: { type: 'object' } },
-            erro: { type: 'string' },
+A resposta da API vem no formato: {"data": [...array de produtos...]}
+Retorne o array de produtos no campo "items". Se não houver produtos ou der erro retorne "items" vazio e "erro" com a mensagem.`,
+          add_context_from_internet: true,
+          model: 'gemini_3_flash',
+          response_json_schema: {
+            type: 'object',
+            properties: {
+              items: { type: 'array', items: { type: 'object' } },
+              erro: { type: 'string' },
+            },
           },
-        },
-      });
+        });
 
-      if (result.erro) throw new Error(result.erro);
+        if (result.erro) throw new Error(result.erro);
+        const pageItems = result.items || [];
+        allProducts = [...allProducts, ...pageItems];
+        hasMore = pageItems.length === 100;
+        page++;
+      }
 
-      const allProducts = result.items || [];
-      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling.');
+      if (allProducts.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
 
       setRawSample(allProducts[0]);
       setBlingProducts(allProducts);
@@ -253,7 +264,7 @@ Retorne os dados no campo "items" como array. Se der erro retorne campo "erro".`
                   Empresa: <strong>{company?.nome_fantasia || company?.razao_social}</strong>
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Busca apenas produtos com situação <strong>Ativo (A)</strong>
+                  Busca todos os produtos cadastrados no Bling (criterio=5, tipo=T)
                 </p>
               </div>
               <div className="flex gap-3 justify-center">
