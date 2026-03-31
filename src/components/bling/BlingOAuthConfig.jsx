@@ -19,24 +19,16 @@ export default function BlingOAuthConfig() {
   const handleRefresh = async () => {
     setRefreshing(true);
     setStatus('loading');
-    setStatusMsg('Verificando token...');
+    setStatusMsg('Renovando token via servidor...');
     try {
-      const tokens = await base44.entities.BlingToken.list();
-      if (!tokens || tokens.length === 0) {
-        setStatus('error');
-        setStatusMsg('Nenhum token encontrado. Clique em "Autorizar / Reconectar Bling" para conectar.');
-        setRefreshing(false);
-        return;
-      }
-      const t = tokens[0];
-      const expiresAt = t.expires_at ? new Date(t.expires_at) : null;
-      const expired = expiresAt && expiresAt < new Date();
-      if (expired) {
-        setStatus('error');
-        setStatusMsg('O refresh token do Bling expirou ou é inválido. É necessário reconectar clicando em "Autorizar / Reconectar Bling" abaixo.');
-      } else {
+      const result = await base44.functions.invoke('refreshBlingToken', {});
+      if (result.success) {
+        const expiresAt = new Date(result.expires_at);
         setStatus('ok');
-        setStatusMsg(`Token ainda válido até ${expiresAt ? expiresAt.toLocaleString('pt-BR') : 'indeterminado'}. Não é necessário renovar agora.`);
+        setStatusMsg(`Token renovado com sucesso! Válido até ${expiresAt.toLocaleString('pt-BR')}.`);
+      } else {
+        setStatus('error');
+        setStatusMsg(`Falha ao renovar: ${result.error}. Se o refresh token expirou, clique em "Autorizar / Reconectar Bling".`);
       }
     } catch (e) {
       setStatus('error');
