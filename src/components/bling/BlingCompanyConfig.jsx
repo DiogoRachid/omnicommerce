@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Loader2, Info } from 'lucide-react';
 
 const BLING_AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
+const BLING_REDIRECT_URI = `${window.location.origin}/empresas`;
 
 export default function BlingCompanyConfig({ company }) {
   const [status, setStatus] = useState(null); // null | 'loading' | 'ok' | 'error'
@@ -105,12 +106,11 @@ export default function BlingCompanyConfig({ company }) {
       setStatusMsg('Configure o Client ID do Bling antes de conectar.');
       return;
     }
-    const redirectUri = company.bling_redirect_uri || window.location.origin + window.location.pathname;
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: company.bling_client_id,
       state: `bling_${company.id}`,
-      redirect_uri: redirectUri,
+      redirect_uri: BLING_REDIRECT_URI,
     });
     window.location.href = `${BLING_AUTH_URL}?${params.toString()}`;
   };
@@ -140,16 +140,6 @@ export default function BlingCompanyConfig({ company }) {
             {statusMsg}
           </AlertDescription>
         </Alert>
-      )}
-
-      {company?.bling_redirect_uri && (
-        <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2.5 flex items-start gap-2">
-          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          <div>
-            <p className="font-medium mb-0.5">URI de Redirecionamento (configure no Bling):</p>
-            <code className="break-all">{company.bling_redirect_uri}</code>
-          </div>
-        </div>
       )}
 
       <div className="flex gap-2 flex-wrap">

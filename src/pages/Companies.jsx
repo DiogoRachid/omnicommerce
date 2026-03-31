@@ -9,11 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Building2, Plus, Check, X, Download, ShoppingBag } from 'lucide-react';
+import { Building2, Plus, Check, X, Download, ShoppingBag, Copy, CheckCheck } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import BlingCompanyConfig from '@/components/bling/BlingCompanyConfig';
 
 const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
+
+const BLING_REDIRECT_URI = `${window.location.origin}/empresas`;
 
 const emptyCompany = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
@@ -33,6 +35,13 @@ export default function Companies() {
   const [editingCompany, setEditingCompany] = useState(null);
   const [form, setForm] = useState(emptyCompany);
   const [blingImportCompany, setBlingImportCompany] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyRedirectUri = () => {
+    navigator.clipboard.writeText(BLING_REDIRECT_URI);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
   const queryClient = useQueryClient();
 
   const { data: companies = [], isLoading } = useQuery({
@@ -270,13 +279,17 @@ export default function Companies() {
                 </div>
                 <div className="md:col-span-2">
                   <Label className="text-xs">URI de Redirecionamento</Label>
-                  <Input
-                    value={form.bling_redirect_uri}
-                    onChange={(e) => updateField('bling_redirect_uri', e.target.value)}
-                    placeholder={`${window.location.origin}/empresas`}
-                  />
+                  <div className="flex gap-2 mt-1">
+                    <div className="flex-1 flex items-center h-9 rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground font-mono overflow-hidden">
+                      <span className="truncate">{BLING_REDIRECT_URI}</span>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 shrink-0" onClick={handleCopyRedirectUri}>
+                      {copied ? <CheckCheck className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copied ? 'Copiado!' : 'Copiar'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Configure esta URI no painel do seu aplicativo Bling.
+                    Cole esta URI no campo "Link de redirecionamento" do seu aplicativo no Bling.
                   </p>
                 </div>
               </div>
