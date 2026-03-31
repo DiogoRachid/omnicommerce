@@ -129,33 +129,24 @@ export default function BlingImportDialog({ company, open, onClose }) {
       }
       const accessToken = tokens[0].access_token;
 
-      // Busca paginada: até 10 páginas (1000 produtos)
+      // Busca paginada diretamente via fetch (sem proxy)
       let allProducts = [];
       let page = 1;
       let hasMore = true;
 
       while (hasMore && page <= 10) {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os produtos.
+        const resp = await fetch(
+          `https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T`,
+          { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } }
+        );
 
-URL: https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T
-Header: Authorization: Bearer ${accessToken}
+        if (!resp.ok) {
+          const errText = await resp.text();
+          throw new Error(`Erro ${resp.status} da API Bling: ${errText.slice(0, 200)}`);
+        }
 
-A resposta da API vem no formato: {"data": [...array de produtos...]}
-Retorne o array de produtos no campo "items". Se não houver produtos ou der erro retorne "items" vazio e "erro" com a mensagem.`,
-          add_context_from_internet: true,
-          model: 'gemini_3_flash',
-          response_json_schema: {
-            type: 'object',
-            properties: {
-              items: { type: 'array', items: { type: 'object' } },
-              erro: { type: 'string' },
-            },
-          },
-        });
-
-        if (result.erro) throw new Error(result.erro);
-        const pageItems = result.items || [];
+        const json = await resp.json();
+        const pageItems = json?.data || [];
         allProducts = [...allProducts, ...pageItems];
         hasMore = pageItems.length === 100;
         page++;
