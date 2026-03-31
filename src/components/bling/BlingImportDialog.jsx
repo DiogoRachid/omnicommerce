@@ -59,7 +59,7 @@ const EXAMPLE_BLING_PRODUCT = {
 
 // Todos os campos disponíveis no produto Bling (para o select de mapeamento)
 const BLING_AVAILABLE_FIELDS = [
-  { value: '', label: '— não mapear —' },
+  { value: '__none__', label: '— não mapear —' },
   { value: 'nome', label: 'nome' },
   { value: 'codigo', label: 'codigo (SKU)' },
   { value: 'gtin', label: 'gtin (EAN)' },
@@ -351,8 +351,8 @@ Se der erro de autenticação ou outro, retorne: {"error": "mensagem"}`,
                           <td className="p-2 text-center text-muted-foreground">→</td>
                           <td className="p-2">
                             <Select
-                              value={mapping[f.key] || ''}
-                              onValueChange={v => setMapping(m => ({ ...m, [f.key]: v }))}
+                              value={mapping[f.key] || '__none__'}
+                              onValueChange={v => setMapping(m => ({ ...m, [f.key]: v === '__none__' ? '' : v }))}
                             >
                               <SelectTrigger className="h-7 text-xs">
                                 <SelectValue placeholder="não mapear" />
