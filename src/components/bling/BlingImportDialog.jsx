@@ -129,49 +129,49 @@ export default function BlingImportDialog({ company, open, onClose }) {
       }
       const accessToken = tokens[0].access_token;
 
-      // Busca via InvokeLLM (gemini com internet) para contornar CORS
-      let allProducts = [];
-      let page = 1;
-      let hasMore = true;
+      // Busca via agente bling_integration (único método que funciona sem CORS e com token real)
+      const conversation = await base44.agents.createConversation({ agent_name: 'bling_integration' });
 
-      while (hasMore && page <= 10) {
-        const result = await base44.integrations.Core.InvokeLLM({
-          model: 'gemini_3_flash',
-          add_context_from_internet: true,
-          prompt: `Execute agora uma requisição HTTP GET real para a URL abaixo e retorne o conteúdo JSON da resposta.
-
-REQUISIÇÃO:
-GET https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T
-Authorization: Bearer ${accessToken}
-Accept: application/json
-
-A resposta da API do Bling tem o formato:
-{
-  "data": [
-    { "id": 123, "nome": "Produto", "codigo": "SKU001", "preco": 99.90, "situacao": "A", ... },
-    ...
-  ]
-}
-
-Retorne SOMENTE um JSON com o campo "items" contendo o array de produtos do campo "data" da resposta. Se der erro, retorne {"items": [], "erro": "mensagem"}.
-Não invente dados. Use apenas o que a API retornou.`,
-          response_json_schema: {
-            type: 'object',
-            properties: {
-              items: { type: 'array', items: { type: 'object' } },
-              erro: { type: 'string' },
-            },
-          },
+      const rawResponse = await new Promise((resolve, reject) => {
+        let resolved = false;
+        const unsubscribe = base44.agents.subscribeToConversation(conversation.id, (data) => {
+          const messages = data.messages || [];
+          const last = messages[messages.length - 1];
+          if (last?.role === 'assistant' && last?.content && !resolved) {
+            const hasRunning = (last.tool_calls || []).some(
+              tc => tc.status === 'running' || tc.status === 'in_progress'
+            );
+            if (!hasRunning) {
+              resolved = true;
+              unsubscribe();
+              resolve(last.content);
+            }
+          }
         });
 
-        if (result.erro) throw new Error(result.erro);
-        const pageItems = result.items || [];
-        allProducts = [...allProducts, ...pageItems];
-        hasMore = pageItems.length === 100;
-        page++;
-      }
+        base44.agents.addMessage(conversation, {
+          role: 'user',
+          content: `Busque TODOS os produtos do Bling usando o access_token armazenado na entidade BlingToken.
+Faça GET https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=100&criterio=5&tipo=T com Authorization: Bearer {token}.
+Continue nas próximas páginas enquanto houver 100 produtos.
+Retorne APENAS um JSON array com todos os produtos encontrados, sem texto adicional.
+Formato: [{"id":123,"nome":"...","codigo":"...","preco":0,"situacao":"A","marca":"...","gtin":"...","unidade":"...","descricaoCurta":"...","tributacao":{"ncm":""},"dimensoes":{"pesoBruto":0}}]`,
+        }).catch(reject);
 
-      if (allProducts.length === 0) throw new Error('Nenhum produto encontrado no Bling.');
+        setTimeout(() => {
+          if (!resolved) { resolved = true; unsubscribe(); reject(new Error('Timeout: agente não respondeu em 120s.')); }
+        }, 120000);
+      });
+
+      // Parse da resposta do agente
+      let allProducts = [];
+      const jsonMatch = rawResponse.match(/(\[[\s\S]*\])/);
+      if (jsonMatch) {
+        try { allProducts = JSON.parse(jsonMatch[1]); } catch {}
+      }
+      if (!Array.isArray(allProducts) || allProducts.length === 0) {
+        throw new Error('O agente não retornou produtos. Verifique se o token Bling está válido nas Configurações.');
+      }
 
       setRawSample(allProducts[0]);
       setBlingProducts(allProducts);
