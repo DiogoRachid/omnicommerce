@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Loader2, MessageSquare } from 'lucide-react';
+import { CheckCircle2, AlertCircle, ExternalLink, RefreshCw, Loader2, MessageSquare, Bot } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import ReactMarkdown from 'react-markdown';
 
 const BLING_AUTH_URL = 'https://www.bling.com.br/OAuth2/Auth';
 const CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
@@ -12,67 +13,24 @@ const CLIENT_SECRET = 'b72a3e2b6c6a3a51b2bcff6d1cddd97b60f1bf01d8ef8e82ec985fde6
 const REDIRECT_URI = window.location.origin + '/configuracoes';
 
 export default function BlingOAuthConfig() {
-  const [status, setStatus] = useState(null); // null | 'loading' | 'ok' | 'error'
+  const [status, setStatus] = useState(null);
   const [statusMsg, setStatusMsg] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [agentMessages, setAgentMessages] = useState([]);
+  const [showAgent, setShowAgent] = useState(false);
+  const bottomRef = useRef(null);
 
-
-
-  const doRefresh = async (tokenRecord, silent = false) => {
-    if (!silent) setRefreshing(true);
-    try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Faça uma requisição HTTP POST para renovar o token OAuth2 do Bling.
-
-URL: https://www.bling.com.br/Api/v3/oauth/token
-Método: POST
-Headers:
-  Content-Type: application/x-www-form-urlencoded
-  Authorization: Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}
-Body (form-urlencoded):
-  grant_type=refresh_token
-  refresh_token=${tokenRecord.refresh_token}
-
-Retorne APENAS um JSON com os campos: access_token, refresh_token, expires_in (segundos).
-Se der erro, retorne: {"error": "mensagem do erro"}.`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            access_token: { type: 'string' },
-            refresh_token: { type: 'string' },
-            expires_in: { type: 'number' },
-            error: { type: 'string' },
-          },
-        },
-      });
-
-      if (result.error) throw new Error(result.error);
-      if (!result.access_token) throw new Error('Resposta inválida da API do Bling.');
-
-      const expiresAt = new Date(Date.now() + (result.expires_in || 21600) * 1000);
-      await base44.entities.BlingToken.update(tokenRecord.id, {
-        access_token: result.access_token,
-        refresh_token: result.refresh_token || tokenRecord.refresh_token,
-        expires_at: expiresAt.toISOString(),
-      });
-
-      if (!silent) {
-        setStatus('ok');
-        setStatusMsg(`Token renovado com sucesso! Válido até ${expiresAt.toLocaleString('pt-BR')}.`);
-      }
-    } catch (e) {
-      if (!silent) {
-        setStatus('error');
-        setStatusMsg('Erro ao renovar token: ' + e.message);
-      }
-    }
-    if (!silent) setRefreshing(false);
-  };
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [agentMessages]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     setStatus('loading');
-    setStatusMsg('Renovando token...');
+    setStatusMsg('Agente renovando token...');
+    setAgentMessages([]);
+    setShowAgent(true);
+
     try {
       const tokens = await base44.entities.BlingToken.list();
       if (!tokens || tokens.length === 0) {
@@ -81,12 +39,59 @@ Se der erro, retorne: {"error": "mensagem do erro"}.`,
         setRefreshing(false);
         return;
       }
-      await doRefresh(tokens[0]);
+
+      const tokenRecord = tokens[0];
+      const conv = await base44.agents.createConversation({ agent_name: 'bling_integration' });
+
+      const result = await new Promise((resolve, reject) => {
+        let resolved = false;
+        const unsubscribe = base44.agents.subscribeToConversation(conv.id, (data) => {
+          setAgentMessages(data.messages || []);
+          const last = (data.messages || []).slice(-1)[0];
+          if (last?.role === 'assistant' && last?.content && !resolved) {
+            const hasRunning = (last.tool_calls || []).some(
+              tc => tc.status === 'running' || tc.status === 'in_progress'
+            );
+            if (!hasRunning) {
+              resolved = true;
+              unsubscribe();
+              resolve(last.content);
+            }
+          }
+        });
+
+        base44.agents.addMessage(conv, {
+          role: 'user',
+          content: `Renove o token OAuth2 do Bling.
+Faça uma requisição HTTP POST para https://www.bling.com.br/Api/v3/oauth/token com:
+- Header: Authorization: Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}
+- Header: Content-Type: application/x-www-form-urlencoded
+- Body: grant_type=refresh_token&refresh_token=${tokenRecord.refresh_token}
+
+Se obtiver novos tokens (access_token e refresh_token), atualize o registro BlingToken (id: ${tokenRecord.id}) com os novos valores.
+Informe o resultado: se foi bem-sucedido ou qual erro ocorreu.`,
+        }).catch(reject);
+
+        setTimeout(() => {
+          if (!resolved) { resolved = true; unsubscribe(); reject(new Error('Timeout: agente não respondeu.')); }
+        }, 120000);
+      });
+
+      // Verifica se houve sucesso lendo o token atualizado
+      const updated = await base44.entities.BlingToken.list();
+      const t = updated[0];
+      if (t && t.access_token !== tokenRecord.access_token) {
+        setStatus('ok');
+        setStatusMsg('Token renovado com sucesso pelo agente!');
+      } else {
+        setStatus('error');
+        setStatusMsg('O agente não conseguiu renovar o token. Veja o log acima ou reconecte o Bling.');
+      }
     } catch (e) {
       setStatus('error');
       setStatusMsg('Erro: ' + e.message);
-      setRefreshing(false);
     }
+    setRefreshing(false);
   };
 
   const checkStatus = async () => {
@@ -157,6 +162,37 @@ Se der erro, retorne: {"error": "mensagem do erro"}.`,
           <p className="font-medium mb-1">URL de Redirecionamento OAuth2 (configure no Bling):</p>
           <code className="break-all">{REDIRECT_URI}</code>
         </div>
+
+        {/* Chat do agente durante renovação */}
+        {showAgent && agentMessages.length > 0 && (
+          <div className="border rounded-lg bg-muted/20 max-h-56 overflow-y-auto p-3 space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1 mb-2">
+              <Bot className="w-3.5 h-3.5" /> Log do agente Bling
+            </p>
+            {agentMessages.map((msg, idx) => (
+              <div key={idx} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                {msg.content && (
+                  <div className={`max-w-[90%] rounded-lg px-3 py-1.5 text-xs ${
+                    msg.role === 'user'
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-white border border-border text-foreground'
+                  }`}>
+                    {msg.role === 'assistant'
+                      ? <ReactMarkdown className="prose prose-xs max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">{msg.content}</ReactMarkdown>
+                      : <p>{msg.content}</p>
+                    }
+                  </div>
+                )}
+              </div>
+            ))}
+            {refreshing && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" /> Agente processando...
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        )}
 
         <div className="flex gap-2 flex-wrap">
           <Button onClick={checkStatus} variant="outline" className="gap-2" disabled={status === 'loading' || refreshing}>
