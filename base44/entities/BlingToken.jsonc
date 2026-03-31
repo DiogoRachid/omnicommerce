@@ -2,9 +2,13 @@
   "name": "BlingToken",
   "type": "object",
   "properties": {
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa vinculada"
+    },
     "account": {
       "type": "string",
-      "description": "Identificador da conta Bling (ex: chinelomania)"
+      "description": "Identificador da conta Bling"
     },
     "access_token": {
       "type": "string",
@@ -21,7 +25,7 @@
     }
   },
   "required": [
-    "account",
+    "company_id",
     "access_token",
     "refresh_token"
   ]

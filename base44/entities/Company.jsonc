@@ -59,9 +59,17 @@
     "email": {
       "type": "string"
     },
-    "bling_api_key": {
+    "bling_client_id": {
       "type": "string",
-      "description": "Chave API do Bling para esta empresa"
+      "description": "Client ID do aplicativo Bling para esta empresa"
+    },
+    "bling_client_secret": {
+      "type": "string",
+      "description": "Client Secret do aplicativo Bling para esta empresa"
+    },
+    "bling_redirect_uri": {
+      "type": "string",
+      "description": "URI de redirecionamento OAuth2 do Bling para esta empresa"
     },
     "bling_integrated": {
       "type": "boolean",

@@ -11,13 +11,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Switch } from '@/components/ui/switch';
 import { Building2, Plus, Check, X, Download, ShoppingBag } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
+import BlingCompanyConfig from '@/components/bling/BlingCompanyConfig';
 
 const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
 
 const emptyCompany = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
   regime_tributario: 'simples_nacional', telefone: '', email: '',
-  bling_api_key: '', bling_integrated: false, status: 'ativa',
+  bling_client_id: '', bling_client_secret: '', bling_redirect_uri: '',
+  bling_integrated: false, status: 'ativa',
   endereco: { logradouro: '', numero: '', complemento: '', bairro: '', cidade: '', uf: '', cep: '' },
   marketplaces_config: {
     mercado_livre: { ...emptyMarketplace },
@@ -241,21 +243,54 @@ export default function Companies() {
               </div>
             </div>
 
-            <div className="md:col-span-2 border-t pt-4 mt-2">
-              <h3 className="font-semibold text-sm mb-3">Integração Bling</h3>
-              <Label>API Key do Bling</Label>
-              <Input
-                value={form.bling_api_key}
-                onChange={(e) => {
-                  updateField('bling_api_key', e.target.value);
-                  updateField('bling_integrated', e.target.value.length > 0);
-                }}
-                placeholder="Cole a chave API do Bling aqui"
-                type="password"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                A chave API do Bling é necessária para emissão de notas fiscais desta empresa.
-              </p>
+            <div className="md:col-span-2 border-t pt-4 mt-2 space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <div className="w-4 h-4 rounded bg-orange-500 flex items-center justify-center">
+                  <span className="text-white text-[8px] font-bold">B</span>
+                </div>
+                Integração Bling (OAuth2 + JWT)
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Client ID</Label>
+                  <Input
+                    value={form.bling_client_id}
+                    onChange={(e) => updateField('bling_client_id', e.target.value)}
+                    placeholder="Client ID do aplicativo Bling"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Client Secret</Label>
+                  <Input
+                    type="password"
+                    value={form.bling_client_secret}
+                    onChange={(e) => updateField('bling_client_secret', e.target.value)}
+                    placeholder="Client Secret do aplicativo Bling"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label className="text-xs">URI de Redirecionamento</Label>
+                  <Input
+                    value={form.bling_redirect_uri}
+                    onChange={(e) => updateField('bling_redirect_uri', e.target.value)}
+                    placeholder={`${window.location.origin}/empresas`}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Configure esta URI no painel do seu aplicativo Bling.
+                  </p>
+                </div>
+              </div>
+              {editingCompany?.id && (
+                <div className="rounded-lg border p-3 bg-muted/20">
+                  <p className="text-xs font-medium text-muted-foreground mb-2">Status da Conexão</p>
+                  <BlingCompanyConfig company={{ ...editingCompany, ...form }} />
+                </div>
+              )}
+              {!editingCompany && (
+                <p className="text-xs text-muted-foreground">
+                  Salve a empresa primeiro para poder conectar ao Bling.
+                </p>
+              )}
             </div>
 
             {/* Marketplaces */}
