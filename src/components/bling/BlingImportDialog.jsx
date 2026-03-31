@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { askBlingAgentJSON } from '@/lib/blingAgent';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -8,91 +7,184 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import {
-  Package, Download, CheckCircle2, AlertCircle, Loader2,
-  RefreshCw, Trash2
-} from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Package, Download, CheckCircle2, AlertCircle, Loader2, RefreshCw, Trash2, Settings2, ArrowRight } from 'lucide-react';
 
-function mapBlingProduct(bp, companyId) {
-  const dim = bp.dimensoes || {};
-  const fotos = (bp.midia?.imagens?.externas || [])
-    .map(i => i.link).filter(Boolean).slice(0, 5);
+// Campos do sistema
+const SYSTEM_FIELDS = [
+  { key: 'nome', label: 'Nome', required: true },
+  { key: 'sku', label: 'SKU / Código', required: true },
+  { key: 'ean', label: 'EAN / GTIN' },
+  { key: 'preco_venda', label: 'Preço de Venda' },
+  { key: 'preco_custo', label: 'Preço de Custo' },
+  { key: 'marca', label: 'Marca' },
+  { key: 'descricao', label: 'Descrição' },
+  { key: 'ncm', label: 'NCM' },
+  { key: 'unidade_medida', label: 'Unidade' },
+  { key: 'peso_bruto_kg', label: 'Peso Bruto (kg)' },
+  { key: 'estoque_atual', label: 'Estoque Atual' },
+];
 
-  return {
-    sku: bp.codigo || `BLING-${bp.id}`,
-    ean: bp.gtin || '',
-    nome: bp.nome || '',
-    descricao: bp.descricaoCurta || bp.descricaoComplementar || '',
-    marca: bp.marca || '',
-    ncm: bp.tributacao?.ncm || '',
-    cest: bp.tributacao?.cest || '',
-    unidade_medida: bp.unidade || 'UN',
-    peso_bruto_kg: dim.pesoBruto ? parseFloat(dim.pesoBruto) : undefined,
-    peso_liquido_kg: dim.pesoLiquido ? parseFloat(dim.pesoLiquido) : undefined,
-    altura_cm: dim.altura ? parseFloat(dim.altura) : undefined,
-    largura_cm: dim.largura ? parseFloat(dim.largura) : undefined,
-    comprimento_cm: dim.profundidade ? parseFloat(dim.profundidade) : undefined,
-    preco_custo: bp.preco ? parseFloat(bp.preco) : undefined,
-    preco_venda: bp.preco ? parseFloat(bp.preco) : undefined,
-    estoque_atual: 0,
-    estoque_minimo: 0,
-    fotos,
-    ativo: bp.situacao === 'A',
+// Mapeamento padrão: campo_sistema -> campo_bling
+const DEFAULT_MAPPING = {
+  nome: 'nome',
+  sku: 'codigo',
+  ean: 'gtin',
+  preco_venda: 'preco',
+  preco_custo: 'preco',
+  marca: 'marca',
+  descricao: 'descricaoCurta',
+  ncm: 'tributacao.ncm',
+  unidade_medida: 'unidade',
+  peso_bruto_kg: 'dimensoes.pesoBruto',
+  estoque_atual: '', // não tem no Bling por padrão
+};
+
+// Produto de exemplo da API do Bling para mostrar os campos disponíveis
+const EXAMPLE_BLING_PRODUCT = {
+  id: 123456,
+  nome: "Tênis Esportivo Adulto",
+  codigo: "TEN-ESP-001",
+  gtin: "7891234567890",
+  preco: 299.90,
+  situacao: "A",
+  marca: "Nike",
+  unidade: "UN",
+  descricaoCurta: "Tênis esportivo para corrida",
+  descricaoComplementar: "Descrição detalhada do produto...",
+  tributacao: { ncm: "64029990", cest: "" },
+  dimensoes: { pesoBruto: 0.8, pesoLiquido: 0.7, altura: 12, largura: 22, profundidade: 32 },
+  estoque: { saldoFisico: 10, saldoVirtual: 10 },
+};
+
+// Todos os campos disponíveis no produto Bling (para o select de mapeamento)
+const BLING_AVAILABLE_FIELDS = [
+  { value: '', label: '— não mapear —' },
+  { value: 'nome', label: 'nome' },
+  { value: 'codigo', label: 'codigo (SKU)' },
+  { value: 'gtin', label: 'gtin (EAN)' },
+  { value: 'preco', label: 'preco' },
+  { value: 'marca', label: 'marca' },
+  { value: 'unidade', label: 'unidade' },
+  { value: 'descricaoCurta', label: 'descricaoCurta' },
+  { value: 'descricaoComplementar', label: 'descricaoComplementar' },
+  { value: 'tributacao.ncm', label: 'tributacao.ncm' },
+  { value: 'tributacao.cest', label: 'tributacao.cest' },
+  { value: 'dimensoes.pesoBruto', label: 'dimensoes.pesoBruto' },
+  { value: 'dimensoes.pesoLiquido', label: 'dimensoes.pesoLiquido' },
+  { value: 'dimensoes.altura', label: 'dimensoes.altura' },
+  { value: 'dimensoes.largura', label: 'dimensoes.largura' },
+  { value: 'dimensoes.profundidade', label: 'dimensoes.profundidade' },
+  { value: 'estoque.saldoFisico', label: 'estoque.saldoFisico' },
+];
+
+function getNestedValue(obj, path) {
+  if (!path) return undefined;
+  return path.split('.').reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
+}
+
+function applyMapping(blingProduct, mapping, companyId) {
+  const result = {
+    ativo: blingProduct.situacao === 'A',
     origem: 'importacao',
     company_id: companyId || undefined,
-    bling_id: String(bp.id),
+    bling_id: String(blingProduct.id),
+    estoque_atual: 0,
+    estoque_minimo: 0,
   };
+  for (const [sysField, blingPath] of Object.entries(mapping)) {
+    if (!blingPath) continue;
+    const val = getNestedValue(blingProduct, blingPath);
+    if (val === undefined || val === null || val === '') continue;
+    const numFields = ['preco_venda', 'preco_custo', 'peso_bruto_kg', 'peso_liquido_kg', 'altura_cm', 'largura_cm', 'comprimento_cm', 'estoque_atual'];
+    result[sysField] = numFields.includes(sysField) ? parseFloat(val) || 0 : String(val);
+  }
+  if (!result.sku) result.sku = `BLING-${blingProduct.id}`;
+  return result;
 }
 
 export default function BlingImportDialog({ company, open, onClose }) {
   const queryClient = useQueryClient();
-  const [step, setStep] = useState('idle'); // idle | loading | preview | importing | done
+  const [step, setStep] = useState('idle'); // idle | loading | mapping | preview | importing | done
   const [blingProducts, setBlingProducts] = useState([]);
+  const [rawSample, setRawSample] = useState(null); // primeiro produto bruto da API para mostrar campos reais
+  const [mapping, setMapping] = useState(DEFAULT_MAPPING);
   const [selected, setSelected] = useState({});
   const [error, setError] = useState('');
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
-  const [testing, setTesting] = useState(false);
-  const [testStatus, setTestStatus] = useState(null);
 
-  const testConnection = async () => {
-    setTesting(true);
-    setError('');
-    setTestStatus(null);
-    try {
-      const tokens = await base44.entities.BlingToken.list();
-      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling nas configurações.');
-      setTestStatus('ok');
-    } catch (e) {
-      setError('Falha na conexão: ' + e.message);
-      setTestStatus('fail');
-    }
-    setTesting(false);
-  };
-
+  // Busca produtos direto da API do Bling via InvokeLLM (HTTP real, sem agente)
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
     setBlingProducts([]);
     setSelected({});
+    setRawSample(null);
     try {
-      // Usa o superagente externo que tem acesso real à API do Bling
-      const allProducts = await askBlingAgentJSON(
-        `Liste TODOS os produtos ativos do Bling (situação=A). Faça quantas páginas forem necessárias.
-Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
-[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]`
-      );
+      const tokens = await base44.entities.BlingToken.list();
+      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling em Configurações.');
+      const token = tokens[0].access_token;
 
-      if (!Array.isArray(allProducts) || allProducts.length === 0) {
-        throw new Error('Nenhum produto ativo encontrado no Bling.');
+      let allProducts = [];
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore && page <= 10) {
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os dados exatamente como recebidos.
+
+URL: https://www.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&situacao=A
+Método: GET
+Headers:
+  Authorization: Bearer ${token}
+  Accept: application/json
+
+Retorne APENAS um JSON com a estrutura:
+{
+  "data": [ array de produtos ],
+  "total": número total de registros
+}
+
+Se der erro de autenticação ou outro, retorne: {"error": "mensagem"}`,
+          response_json_schema: {
+            type: 'object',
+            properties: {
+              data: { type: 'array', items: { type: 'object' } },
+              total: { type: 'number' },
+              error: { type: 'string' },
+            },
+          },
+        });
+
+        if (result.error) throw new Error('Erro na API do Bling: ' + result.error);
+        const items = result.data || [];
+        if (items.length === 0) { hasMore = false; break; }
+
+        allProducts = [...allProducts, ...items];
+        if (page === 1 && items.length > 0) setRawSample(items[0]);
+        if (items.length < 100) hasMore = false;
+        page++;
       }
+
+      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling.');
+
+      // Detecta se mapeamento precisa ser verificado
+      const sample = allProducts[0];
+      const hasMappingGap = !getNestedValue(sample, mapping.nome) && !getNestedValue(sample, mapping.sku);
 
       setBlingProducts(allProducts);
       const sel = {};
       allProducts.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
-      setStep('preview');
+
+      // Se há problema de mapeamento, vai para etapa de mapeamento
+      if (hasMappingGap) {
+        setStep('mapping');
+      } else {
+        setStep('preview');
+      }
     } catch (e) {
       setError(e.message);
       setStep('idle');
@@ -107,9 +199,7 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
 
     setProgressLabel('Apagando produtos existentes...');
     const existing = await base44.entities.Product.list('-created_date', 1000);
-    const toDelete = company?.id
-      ? existing.filter(p => p.company_id === company.id)
-      : existing;
+    const toDelete = company?.id ? existing.filter(p => p.company_id === company.id) : existing;
     for (const p of toDelete) {
       try { await base44.entities.Product.delete(p.id); } catch {}
     }
@@ -117,10 +207,9 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
     for (let i = 0; i < toImport.length; i++) {
       const bp = toImport[i];
       setProgress(Math.round(((i + 1) / toImport.length) * 100));
-      setProgressLabel(`Importando ${i + 1} de ${toImport.length}: ${bp.nome}`);
-
+      setProgressLabel(`Importando ${i + 1} de ${toImport.length}: ${bp.nome || bp.codigo || bp.id}`);
       try {
-        await base44.entities.Product.create(mapBlingProduct(bp, company?.id));
+        await base44.entities.Product.create(applyMapping(bp, mapping, company?.id));
         created++;
       } catch { errors++; }
     }
@@ -146,9 +235,12 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
     setImportResult(null);
     setProgress(0);
     setProgressLabel('');
-    setTestStatus(null);
+    setRawSample(null);
     onClose();
   };
+
+  const sampleToShow = rawSample || EXAMPLE_BLING_PRODUCT;
+  const isExampleSample = !rawSample;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -176,25 +268,21 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              {testStatus === 'ok' && (
-                <Alert className="border-green-200 bg-green-50 text-green-800">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  <AlertDescription>Conexão com o Bling estabelecida com sucesso!</AlertDescription>
-                </Alert>
-              )}
               <div className="w-16 h-16 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto">
                 <Download className="w-8 h-8 text-orange-500" />
               </div>
               <div>
                 <h3 className="font-semibold text-base">Buscar produtos do Bling</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Via Superagent Base44 — <strong>{company?.nome_fantasia || company?.razao_social}</strong>
+                  Chamada direta à API do Bling — <strong>{company?.nome_fantasia || company?.razao_social}</strong>
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Busca apenas produtos com situação <strong>Ativo (A)</strong>
                 </p>
               </div>
               <div className="flex gap-3 justify-center">
-                <Button variant="outline" onClick={testConnection} disabled={testing} className="gap-2">
-                  {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  Testar Conexão
+                <Button onClick={() => { setRawSample(null); setStep('mapping'); }} variant="outline" className="gap-2">
+                  <Settings2 className="w-4 h-4" /> Configurar Mapeamento
                 </Button>
                 <Button onClick={fetchProducts} className="gap-2 bg-orange-500 hover:bg-orange-600">
                   <Download className="w-4 h-4" /> Buscar Produtos
@@ -207,8 +295,86 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
           {step === 'loading' && (
             <div className="text-center py-12 space-y-3">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
-              <p className="text-sm text-muted-foreground">Buscando produtos no Bling via agente...</p>
+              <p className="text-sm text-muted-foreground">Buscando produtos diretamente na API do Bling...</p>
               <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos</p>
+            </div>
+          )}
+
+          {/* Mapeamento de campos */}
+          {step === 'mapping' && (
+            <div className="space-y-4 py-2">
+              <Alert className={isExampleSample ? 'border-yellow-200 bg-yellow-50' : 'border-blue-200 bg-blue-50'}>
+                <AlertCircle className={`h-4 w-4 ${isExampleSample ? 'text-yellow-600' : 'text-blue-600'}`} />
+                <AlertDescription className={isExampleSample ? 'text-yellow-800' : 'text-blue-800'}>
+                  {isExampleSample
+                    ? <><strong>Exemplo de estrutura:</strong> Abaixo está um produto de exemplo para referência. Busque os produtos primeiro para ver a estrutura real da sua conta Bling.</>
+                    : <><strong>Estrutura real detectada.</strong> Configure como os campos do Bling mapeiam para os campos do sistema.</>
+                  }
+                </AlertDescription>
+              </Alert>
+
+              {/* Produto de exemplo / real */}
+              <div className="rounded-lg border overflow-hidden">
+                <div className="bg-muted px-3 py-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {isExampleSample ? 'Exemplo de produto Bling (estrutura de campos)' : 'Produto real da sua conta Bling'}
+                  </p>
+                  <Badge variant="outline" className="text-[10px]">JSON</Badge>
+                </div>
+                <pre className="text-xs p-3 bg-slate-950 text-green-400 overflow-x-auto max-h-40 leading-5">
+{JSON.stringify(sampleToShow, null, 2)}
+                </pre>
+              </div>
+
+              {/* Tabela de mapeamento */}
+              <div>
+                <p className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <Settings2 className="w-4 h-4" /> Mapeamento de campos
+                </p>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="p-2 text-left font-medium text-muted-foreground text-xs">Campo do Sistema</th>
+                        <th className="p-2 text-center text-muted-foreground text-xs"><ArrowRight className="w-3 h-3 inline" /></th>
+                        <th className="p-2 text-left font-medium text-muted-foreground text-xs">Campo no Bling</th>
+                        <th className="p-2 text-left font-medium text-muted-foreground text-xs">Valor de exemplo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {SYSTEM_FIELDS.map(f => (
+                        <tr key={f.key} className="border-t">
+                          <td className="p-2">
+                            <span className="font-medium text-xs">{f.label}</span>
+                            {f.required && <span className="text-destructive ml-1 text-xs">*</span>}
+                          </td>
+                          <td className="p-2 text-center text-muted-foreground">→</td>
+                          <td className="p-2">
+                            <Select
+                              value={mapping[f.key] || ''}
+                              onValueChange={v => setMapping(m => ({ ...m, [f.key]: v }))}
+                            >
+                              <SelectTrigger className="h-7 text-xs">
+                                <SelectValue placeholder="não mapear" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {BLING_AVAILABLE_FIELDS.map(bf => (
+                                  <SelectItem key={bf.value} value={bf.value} className="text-xs">{bf.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="p-2 font-mono text-xs text-muted-foreground">
+                            {mapping[f.key]
+                              ? String(getNestedValue(sampleToShow, mapping[f.key]) ?? '—').slice(0, 30)
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
@@ -230,6 +396,9 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => toggleAll(true)}>Todos</Button>
                   <Button variant="outline" size="sm" onClick={() => toggleAll(false)}>Nenhum</Button>
+                  <Button variant="outline" size="sm" onClick={() => setStep('mapping')} className="gap-1">
+                    <Settings2 className="w-3.5 h-3.5" /> Mapeamento
+                  </Button>
                   <Button variant="outline" size="sm" onClick={fetchProducts} className="gap-1">
                     <RefreshCw className="w-3.5 h-3.5" /> Atualizar
                   </Button>
@@ -261,13 +430,19 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
                               onClick={(e) => e.stopPropagation()} />
                           </td>
                           <td className="p-2">
-                            <p className="font-medium truncate max-w-[200px]">{p.nome}</p>
-                            {p.marca && <p className="text-xs text-muted-foreground">{p.marca}</p>}
+                            <p className="font-medium truncate max-w-[200px]">
+                              {getNestedValue(p, mapping.nome) || p.nome || '-'}
+                            </p>
+                            {(getNestedValue(p, mapping.marca) || p.marca) && (
+                              <p className="text-xs text-muted-foreground">{getNestedValue(p, mapping.marca) || p.marca}</p>
+                            )}
                           </td>
-                          <td className="p-2 font-mono text-xs">{p.codigo || '-'}</td>
-                          <td className="p-2 font-mono text-xs">{p.gtin || '-'}</td>
+                          <td className="p-2 font-mono text-xs">{getNestedValue(p, mapping.sku) || p.codigo || '-'}</td>
+                          <td className="p-2 font-mono text-xs">{getNestedValue(p, mapping.ean) || p.gtin || '-'}</td>
                           <td className="p-2 text-right">
-                            {p.preco ? `R$ ${parseFloat(p.preco).toFixed(2)}` : '-'}
+                            {(getNestedValue(p, mapping.preco_venda) || p.preco)
+                              ? `R$ ${parseFloat(getNestedValue(p, mapping.preco_venda) || p.preco).toFixed(2)}`
+                              : '-'}
                           </td>
                           <td className="p-2 text-center">
                             <Badge variant={p.situacao === 'A' ? 'default' : 'secondary'} className="text-[10px] px-1.5">
@@ -327,6 +502,17 @@ Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
         </div>
 
         <DialogFooter className="border-t pt-3">
+          {step === 'mapping' && (
+            <>
+              <Button variant="outline" onClick={handleClose}>Cancelar</Button>
+              {blingProducts.length > 0 && (
+                <Button variant="outline" onClick={() => setStep('preview')}>Voltar à lista</Button>
+              )}
+              <Button onClick={blingProducts.length > 0 ? () => setStep('preview') : fetchProducts} className="gap-2 bg-orange-500 hover:bg-orange-600">
+                {blingProducts.length > 0 ? 'Aplicar mapeamento' : <><Download className="w-4 h-4" /> Buscar com este mapeamento</>}
+              </Button>
+            </>
+          )}
           {step === 'preview' && (
             <>
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
