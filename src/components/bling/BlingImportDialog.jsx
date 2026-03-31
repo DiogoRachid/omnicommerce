@@ -9,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, Download, CheckCircle2, AlertCircle, Loader2, RefreshCw, Trash2, Settings2, ArrowRight } from 'lucide-react';
+import { askBlingAgentJSON } from '@/lib/blingAgent';
 
 // Campos do sistema
 const SYSTEM_FIELDS = [
@@ -115,7 +116,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
   const [progressLabel, setProgressLabel] = useState('');
   const [importResult, setImportResult] = useState(null);
 
-  // Busca produtos direto da API do Bling via InvokeLLM (HTTP real, sem agente)
+  // Busca produtos via agente Bling (que tem acesso real à API via OAuth2)
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
@@ -123,52 +124,18 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setSelected({});
     setRawSample(null);
     try {
-      const tokens = await base44.entities.BlingToken.list();
-      if (!tokens || tokens.length === 0) throw new Error('Nenhum token Bling encontrado. Autorize o Bling em Configurações.');
-      const token = tokens[0].access_token;
+      const allProducts = await askBlingAgentJSON(
+        `Liste TODOS os produtos ativos do Bling (situação=A). Faça quantas páginas forem necessárias.
+Responda APENAS com um array JSON puro no seguinte formato, sem texto adicional:
+[{"id":123,"nome":"Nome","codigo":"SKU","gtin":"EAN","preco":99.90,"situacao":"A","marca":"","unidade":"UN","descricaoCurta":"","tributacao":{"ncm":"","cest":""},"dimensoes":{"pesoBruto":0,"pesoLiquido":0,"altura":0,"largura":0,"profundidade":0}}]`
+      );
 
-      let allProducts = [];
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore && page <= 10) {
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt: `Faça uma requisição HTTP GET para a API do Bling e retorne os dados exatamente como recebidos.
-
-URL: https://www.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&situacao=A
-Método: GET
-Headers:
-  Authorization: Bearer ${token}
-  Accept: application/json
-
-Retorne APENAS um JSON com a estrutura:
-{
-  "data": [ array de produtos ],
-  "total": número total de registros
-}
-
-Se der erro de autenticação ou outro, retorne: {"error": "mensagem"}`,
-          response_json_schema: {
-            type: 'object',
-            properties: {
-              data: { type: 'array', items: { type: 'object' } },
-              total: { type: 'number' },
-              error: { type: 'string' },
-            },
-          },
-        });
-
-        if (result.error) throw new Error('Erro na API do Bling: ' + result.error);
-        const items = result.data || [];
-        if (items.length === 0) { hasMore = false; break; }
-
-        allProducts = [...allProducts, ...items];
-        if (page === 1 && items.length > 0) setRawSample(items[0]);
-        if (items.length < 100) hasMore = false;
-        page++;
+      if (!Array.isArray(allProducts) || allProducts.length === 0) {
+        throw new Error('Nenhum produto ativo encontrado no Bling.');
       }
 
-      if (allProducts.length === 0) throw new Error('Nenhum produto ativo encontrado no Bling.');
+      // Guarda amostra real para mostrar no mapeamento
+      setRawSample(allProducts[0]);
 
       // Detecta se mapeamento precisa ser verificado
       const sample = allProducts[0];
@@ -179,7 +146,6 @@ Se der erro de autenticação ou outro, retorne: {"error": "mensagem"}`,
       allProducts.forEach(p => { sel[p.id] = true; });
       setSelected(sel);
 
-      // Se há problema de mapeamento, vai para etapa de mapeamento
       if (hasMappingGap) {
         setStep('mapping');
       } else {
