@@ -129,24 +129,43 @@ export default function BlingImportDialog({ company, open, onClose }) {
       }
       const accessToken = tokens[0].access_token;
 
-      // Busca paginada diretamente via fetch (sem proxy)
+      // Busca via InvokeLLM (gemini com internet) para contornar CORS
       let allProducts = [];
       let page = 1;
       let hasMore = true;
 
       while (hasMore && page <= 10) {
-        const resp = await fetch(
-          `https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T`,
-          { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } }
-        );
+        const result = await base44.integrations.Core.InvokeLLM({
+          model: 'gemini_3_flash',
+          add_context_from_internet: true,
+          prompt: `Execute agora uma requisição HTTP GET real para a URL abaixo e retorne o conteúdo JSON da resposta.
 
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Erro ${resp.status} da API Bling: ${errText.slice(0, 200)}`);
-        }
+REQUISIÇÃO:
+GET https://api.bling.com.br/Api/v3/produtos?pagina=${page}&limite=100&criterio=5&tipo=T
+Authorization: Bearer ${accessToken}
+Accept: application/json
 
-        const json = await resp.json();
-        const pageItems = json?.data || [];
+A resposta da API do Bling tem o formato:
+{
+  "data": [
+    { "id": 123, "nome": "Produto", "codigo": "SKU001", "preco": 99.90, "situacao": "A", ... },
+    ...
+  ]
+}
+
+Retorne SOMENTE um JSON com o campo "items" contendo o array de produtos do campo "data" da resposta. Se der erro, retorne {"items": [], "erro": "mensagem"}.
+Não invente dados. Use apenas o que a API retornou.`,
+          response_json_schema: {
+            type: 'object',
+            properties: {
+              items: { type: 'array', items: { type: 'object' } },
+              erro: { type: 'string' },
+            },
+          },
+        });
+
+        if (result.erro) throw new Error(result.erro);
+        const pageItems = result.items || [];
         allProducts = [...allProducts, ...pageItems];
         hasMore = pageItems.length === 100;
         page++;
