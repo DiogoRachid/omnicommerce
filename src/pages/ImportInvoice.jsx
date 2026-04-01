@@ -39,49 +39,19 @@ export default function ImportInvoice() {
     if (!file) return;
 
     setUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const xmlContent = await (await fetch(file_url)).text();
 
-    const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
-      file_url,
-      json_schema: {
-        type: "object",
-        properties: {
-          numero_nf: { type: "string" },
-          serie: { type: "string" },
-          chave_acesso: { type: "string" },
-          data_emissao: { type: "string" },
-          emitente_cnpj: { type: "string" },
-          emitente_nome: { type: "string" },
-          destinatario_cnpj: { type: "string" },
-          destinatario_nome: { type: "string" },
-          valor_total: { type: "number" },
-          valor_produtos: { type: "number" },
-          valor_frete: { type: "number" },
-          valor_desconto: { type: "number" },
-          items: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                produto_nome: { type: "string" },
-                produto_ean: { type: "string" },
-                ncm: { type: "string" },
-                cfop: { type: "string" },
-                quantidade: { type: "number" },
-                valor_unitario: { type: "number" },
-                valor_total: { type: "number" },
-                unidade: { type: "string" }
-              }
-            }
-          }
-        }
+      const result = await base44.functions.invoke('parseNFeXml', { xml_content: xmlContent });
+
+      if (result.data?.success) {
+        setParsedData({ ...result.data, xml_url: file_url });
+      } else {
+        toast.error('Erro ao processar XML: ' + (result.data?.error || 'Formato inválido'));
       }
-    });
-
-    if (result.status === 'success') {
-      setParsedData({ ...result.output, xml_url: file_url });
-    } else {
-      toast.error('Erro ao processar XML: ' + (result.details || 'Formato inválido'));
+    } catch (err) {
+      toast.error('Erro ao fazer upload: ' + err.message);
     }
     setUploading(false);
   };
@@ -100,7 +70,7 @@ export default function ImportInvoice() {
     mutationFn: async () => {
       const companyId = selectedCompany !== 'all' ? selectedCompany : undefined;
 
-      const invoiceItems = (parsedData.items || []).map((item, idx) => ({
+      const invoiceItems = (parsedData.nf?.items || []).map((item, idx) => ({
         ...item,
         product_id: itemMappings[idx] || null,
         vinculado: !!itemMappings[idx],
@@ -108,27 +78,27 @@ export default function ImportInvoice() {
 
       const invoice = await base44.entities.Invoice.create({
         tipo: 'entrada',
-        modelo: '55',
-        numero: parsedData.numero_nf,
-        serie: parsedData.serie,
-        chave_acesso: parsedData.chave_acesso,
-        data_emissao: parsedData.data_emissao,
-        emitente_cnpj: parsedData.emitente_cnpj,
-        emitente_nome: parsedData.emitente_nome,
-        destinatario_cnpj: parsedData.destinatario_cnpj,
-        destinatario_nome: parsedData.destinatario_nome,
-        valor_total: parsedData.valor_total,
-        valor_produtos: parsedData.valor_produtos,
-        valor_frete: parsedData.valor_frete,
-        valor_desconto: parsedData.valor_desconto,
+        modelo: parsedData.nf?.modelo || '55',
+        numero: parsedData.nf?.numero,
+        serie: parsedData.nf?.serie,
+        chave_acesso: parsedData.nf?.chave_acesso,
+        data_emissao: parsedData.nf?.data_emissao,
+        emitente_cnpj: parsedData.fornecedor?.cnpj,
+        emitente_nome: parsedData.fornecedor?.nome,
+        destinatario_cnpj: parsedData.destinatario?.cnpj,
+        destinatario_nome: parsedData.destinatario?.nome,
+        valor_total: parsedData.totais?.nf,
+        valor_produtos: parsedData.totais?.produtos,
+        valor_frete: 0,
+        valor_desconto: parsedData.totais?.desconto,
         xml_url: parsedData.xml_url,
         items: invoiceItems,
         status: 'importada',
         company_id: companyId,
       });
 
-      for (let idx = 0; idx < (parsedData.items || []).length; idx++) {
-         const item = parsedData.items[idx];
+      for (let idx = 0; idx < (parsedData.nf?.items || []).length; idx++) {
+         const item = parsedData.nf.items[idx];
          const linkedProductId = itemMappings[idx];
 
          if (linkedProductId) {
@@ -144,16 +114,16 @@ export default function ImportInvoice() {
                custo_unitario: item.valor_unitario || 0,
                referencia_tipo: 'nfe_entrada',
                referencia_id: invoice.id,
-               invoice_number: parsedData.numero_nf,
+               invoice_number: parsedData.nf.numero,
                company_id: companyId,
              });
            }
          } else {
-           const sku = `NF${parsedData.numero_nf || 'X'}-${idx + 1}`;
+           const sku = `NF${parsedData.nf.numero || 'X'}-${idx + 1}`;
            const newProduct = await base44.entities.Product.create({
              sku,
-             ean: item.produto_ean || '',
-             nome: item.produto_nome || `Produto NF ${idx + 1}`,
+             ean: item.ean || '',
+             nome: item.descricao || `Produto NF ${idx + 1}`,
              ncm: item.ncm || '',
              unidade_medida: item.unidade || 'UN',
              preco_custo: item.valor_unitario || 0,
@@ -171,7 +141,7 @@ export default function ImportInvoice() {
              custo_unitario: item.valor_unitario || 0,
              referencia_tipo: 'nfe_entrada',
              referencia_id: invoice.id,
-             invoice_number: parsedData.numero_nf,
+             invoice_number: parsedData.nf.numero,
              company_id: companyId,
            });
          }
@@ -182,19 +152,17 @@ export default function ImportInvoice() {
          for (const dup of parsedData.duplicatas) {
            await base44.entities.FinancialAccount.create({
              tipo: 'pagar',
-             descricao: `NF ${parsedData.numero_nf} - ${parsedData.emitente_nome}`,
+             descricao: `NF ${parsedData.nf.numero} - ${parsedData.fornecedor.nome}`,
              valor: dup.valor,
              status: 'pendente',
              data_vencimento: dup.vencimento,
              centro_custo: 'outro',
              forma_pagamento: parsedData.forma_pagamento || 'outro',
-             fornecedor_id: fornecedor?.id,
-             fornecedor_nome: parsedData.emitente_nome,
+             fornecedor_nome: parsedData.fornecedor.nome,
              invoice_id: invoice.id,
-             numero_documento: `${parsedData.numero_nf}-${dup.numero}`,
+             numero_documento: `${parsedData.nf.numero}-${dup.numero}`,
              company_id: companyId,
            });
-           contasCreated++;
          }
        }
 
@@ -251,19 +219,19 @@ export default function ImportInvoice() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">Número</p>
-                  <p className="font-semibold">{parsedData.numero_nf || '-'}</p>
+                  <p className="font-semibold">{parsedData.nf?.numero || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Série</p>
-                  <p className="font-semibold">{parsedData.serie || '-'}</p>
+                  <p className="font-semibold">{parsedData.nf?.serie || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Emitente</p>
-                  <p className="font-semibold">{parsedData.emitente_nome || '-'}</p>
+                  <p className="font-semibold">{parsedData.fornecedor?.nome || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Valor Total</p>
-                  <p className="font-semibold">R$ {(parsedData.valor_total || 0).toFixed(2)}</p>
+                  <p className="font-semibold">R$ {(parsedData.totais?.nf || 0).toFixed(2)}</p>
                 </div>
               </div>
             </CardContent>
@@ -290,12 +258,12 @@ export default function ImportInvoice() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(parsedData.items || []).map((item, idx) => {
+                  {(parsedData.nf?.items || []).map((item, idx) => {
                     const linkedProduct = itemMappings[idx] ? products.find(p => p.id === itemMappings[idx]) : null;
                     return (
                       <TableRow key={idx}>
-                        <TableCell className="text-sm font-medium">{item.produto_nome}</TableCell>
-                        <TableCell className="text-sm font-mono">{item.produto_ean || '-'}</TableCell>
+                        <TableCell className="text-sm font-medium">{item.descricao}</TableCell>
+                        <TableCell className="text-sm font-mono">{item.ean || '-'}</TableCell>
                         <TableCell className="text-right text-sm">{item.quantidade}</TableCell>
                         <TableCell className="text-right text-sm">R$ {(item.valor_unitario || 0).toFixed(2)}</TableCell>
                         <TableCell>
