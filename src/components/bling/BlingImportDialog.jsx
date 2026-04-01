@@ -136,7 +136,7 @@ export default function BlingImportDialog({ company, open, onClose }) {
     return t;
   };
 
-  // Busca produtos via agente bling_integration
+  // Busca produtos via blingProxy (backend function)
   const fetchProducts = async () => {
     setStep('loading');
     setError('');
@@ -144,50 +144,24 @@ export default function BlingImportDialog({ company, open, onClose }) {
     setSelected({});
     setRawSample(null);
     try {
-      const tokenRecord = await validateToken();
+      await validateToken();
 
-      // Busca via agente bling_integration (único método que funciona sem CORS e com token real)
-      const conversation = await base44.agents.createConversation({ agent_name: 'bling_integration' });
-
-      const rawResponse = await new Promise((resolve, reject) => {
-        let resolved = false;
-        const unsubscribe = base44.agents.subscribeToConversation(conversation.id, (data) => {
-          const messages = data.messages || [];
-          const last = messages[messages.length - 1];
-          if (last?.role === 'assistant' && last?.content && !resolved) {
-            const hasRunning = (last.tool_calls || []).some(
-              tc => tc.status === 'running' || tc.status === 'in_progress'
-            );
-            if (!hasRunning) {
-              resolved = true;
-              unsubscribe();
-              resolve(last.content);
-            }
-          }
-        });
-
-        base44.agents.addMessage(conversation, {
-          role: 'user',
-          content: `Busque TODOS os produtos do Bling usando o access_token armazenado na entidade BlingToken.
-Faça GET https://api.bling.com.br/Api/v3/produtos?pagina=1&limite=100&criterio=5&tipo=T com Authorization: Bearer {token}.
-Continue nas próximas páginas enquanto houver 100 produtos.
-Retorne APENAS um JSON array com todos os produtos encontrados, sem texto adicional.
-Formato: [{"id":123,"nome":"...","codigo":"...","preco":0,"situacao":"A","marca":"...","gtin":"...","unidade":"...","descricaoCurta":"...","tributacao":{"ncm":""},"dimensoes":{"pesoBruto":0}}]`,
-        }).catch(reject);
-
-        setTimeout(() => {
-          if (!resolved) { resolved = true; unsubscribe(); reject(new Error('Timeout: agente não respondeu em 120s.')); }
-        }, 120000);
-      });
-
-      // Parse da resposta do agente
+      // Busca paginada via blingProxy
       let allProducts = [];
-      const jsonMatch = rawResponse.match(/(\[[\s\S]*\])/);
-      if (jsonMatch) {
-        try { allProducts = JSON.parse(jsonMatch[1]); } catch {}
+      let pagina = 1;
+      while (true) {
+        const res = await base44.functions.invoke('blingProxy', {
+          action: 'listProducts',
+          payload: { pagina, limite: 100 },
+        });
+        const data = res.data?.data || [];
+        allProducts = allProducts.concat(data);
+        if (data.length < 100) break;
+        pagina++;
       }
+
       if (!Array.isArray(allProducts) || allProducts.length === 0) {
-        throw new Error('O agente não retornou produtos. Verifique se o token Bling está válido nas Configurações.');
+        throw new Error('Nenhum produto encontrado no Bling. Verifique se há produtos cadastrados e se o token está válido.');
       }
 
       setRawSample(allProducts[0]);
@@ -318,8 +292,8 @@ Formato: [{"id":123,"nome":"...","codigo":"...","preco":0,"situacao":"A","marca"
           {step === 'loading' && (
             <div className="text-center py-12 space-y-3">
               <Loader2 className="w-8 h-8 animate-spin text-orange-500 mx-auto" />
-              <p className="text-sm text-muted-foreground">Buscando produtos diretamente na API do Bling...</p>
-              <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos</p>
+              <p className="text-sm text-muted-foreground">Buscando produtos no Bling...</p>
+              <p className="text-xs text-muted-foreground">Isso pode levar alguns segundos dependendo da quantidade de produtos</p>
             </div>
           )}
 
