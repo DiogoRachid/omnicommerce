@@ -2,17 +2,17 @@ import React, { useState } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
   Trash2, ChevronRight, ChevronDown, Layers, Download
 } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
+import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
+import { CATEGORIA_MAP, formatBRL, calcTributos } from '@/lib/productCategories';
 
 export default function Products() {
   const { selectedCompany } = useOutletContext();
@@ -20,6 +20,7 @@ export default function Products() {
   const [selected, setSelected] = useState({});
   const [expanded, setExpanded] = useState({});
   const [showBlingImport, setShowBlingImport] = useState(false);
+  const [filters, setFilters] = useState([]);
   const queryClient = useQueryClient();
 
   const { data: products = [], isLoading } = useQuery({
@@ -44,16 +45,14 @@ export default function Products() {
 
   const handleDeleteSelected = async () => {
     const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
-    for (const id of ids) {
-      await base44.entities.Product.delete(id);
-    }
+    for (const id of ids) await base44.entities.Product.delete(id);
     setSelected({});
     queryClient.invalidateQueries({ queryKey: ['products'] });
   };
 
   const selectedCount = Object.values(selected).filter(Boolean).length;
 
-  // Separa em root (pai + simples) e variações por pai
+  // Separa variações dos root
   const rootProducts = products.filter(p => p.tipo !== 'variacao');
   const variacoesPorPai = {};
   products.filter(p => p.tipo === 'variacao').forEach(v => {
@@ -63,11 +62,13 @@ export default function Products() {
     }
   });
 
-  const filtered = rootProducts.filter(p =>
+  // Aplica busca e filtros
+  const searched = rootProducts.filter(p =>
     p.nome?.toLowerCase().includes(search.toLowerCase()) ||
     p.sku?.toLowerCase().includes(search.toLowerCase()) ||
     p.ean?.includes(search)
   );
+  const filtered = applyFilters(searched, filters);
 
   const toggleAll = (val) => {
     const s = {};
@@ -77,13 +78,168 @@ export default function Products() {
 
   const toggleExpanded = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
 
-  // Encontra a empresa selecionada para o dialog de importação
-  const companyForImport = selectedCompany && selectedCompany !== 'all'
-    ? { id: selectedCompany }
-    : null;
+  const companyForImport = selectedCompany && selectedCompany !== 'all' ? { id: selectedCompany } : null;
+
+  // Cabeçalho de coluna com estilo planilha
+  const Th = ({ children, right, w }) => (
+    <th className={`border border-border bg-muted px-2 py-1.5 text-xs font-semibold text-muted-foreground whitespace-nowrap ${right ? 'text-right' : 'text-left'} ${w || ''}`}>
+      {children}
+    </th>
+  );
+
+  const Td = ({ children, right, mono, muted, small, className = '' }) => (
+    <td className={`border border-border px-2 py-1.5 text-xs ${right ? 'text-right' : ''} ${mono ? 'font-mono' : ''} ${muted ? 'text-muted-foreground' : ''} ${small ? 'text-[11px]' : ''} ${className}`}>
+      {children}
+    </td>
+  );
+
+  const renderProductRow = (p, isVariacao = false, paiNome = '') => {
+    const isPai = p.tipo === 'pai';
+    const isExpanded = expanded[p.id];
+    const variacoes = isPai ? (variacoesPorPai[p.id] || []) : [];
+    const tributos = calcTributos(p.preco_venda, p.categoria);
+    const catLabel = CATEGORIA_MAP[p.categoria]?.label || p.categoria || '-';
+
+    return (
+      <React.Fragment key={p.id}>
+        <tr
+          className={`
+            ${selected[p.id] ? 'bg-primary/5' : ''}
+            ${isPai ? 'bg-orange-50/60' : ''}
+            ${isVariacao ? 'bg-slate-50/60' : ''}
+            hover:bg-accent/40 transition-colors
+          `}
+        >
+          {/* Checkbox */}
+          <Td className="w-8 text-center">
+            <Checkbox
+              checked={!!selected[p.id]}
+              onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
+            />
+          </Td>
+
+          {/* Foto */}
+          <Td className="w-10 text-center p-1">
+            {p.fotos?.[0] ? (
+              <img src={p.fotos[0]} className="w-8 h-8 rounded object-cover mx-auto" alt="" />
+            ) : (
+              <div className={`w-8 h-8 rounded flex items-center justify-center mx-auto ${isPai ? 'bg-orange-100' : 'bg-muted'}`}>
+                {isPai ? <Layers className="w-3.5 h-3.5 text-orange-500" /> : <Package className="w-3.5 h-3.5 text-muted-foreground" />}
+              </div>
+            )}
+          </Td>
+
+          {/* Categoria */}
+          <Td muted small>{catLabel}</Td>
+
+          {/* Produto / Nome */}
+          <Td className={isVariacao ? 'pl-8' : ''}>
+            <div className="flex items-center gap-1.5">
+              {isPai && (
+                <button
+                  onClick={() => toggleExpanded(p.id)}
+                  className="p-0.5 rounded hover:bg-orange-200 transition-colors flex-shrink-0"
+                >
+                  {isExpanded
+                    ? <ChevronDown className="w-3.5 h-3.5 text-orange-600" />
+                    : <ChevronRight className="w-3.5 h-3.5 text-orange-600" />
+                  }
+                </button>
+              )}
+              {isVariacao && <div className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0 ml-2" />}
+              <div>
+                <p className="font-medium leading-tight">
+                  {p.nome}
+                  {isPai && variacoes.length > 0 && (
+                    <span className="text-[10px] text-orange-600 ml-1.5 font-normal">({variacoes.length} var.)</span>
+                  )}
+                </p>
+                {p.marca && <p className="text-[10px] text-muted-foreground">{p.marca}</p>}
+                {isVariacao && p.variacoes_atributos && (
+                  <p className="text-[10px] text-muted-foreground">{p.variacoes_atributos}</p>
+                )}
+              </div>
+            </div>
+          </Td>
+
+          {/* SKU */}
+          <Td mono muted>{p.sku}</Td>
+
+          {/* EAN */}
+          <Td mono muted>{p.ean || '-'}</Td>
+
+          {/* Custo */}
+          <Td right>{p.preco_custo ? formatBRL(p.preco_custo) : '-'}</Td>
+
+          {/* Preço Venda */}
+          <Td right className="font-semibold">
+            {p.preco_venda ? formatBRL(p.preco_venda) : (isPai ? <span className="text-muted-foreground font-normal text-[10px]">ver var.</span> : '-')}
+          </Td>
+
+          {/* Tributos aprox. */}
+          <Td right muted small>
+            {p.preco_venda && p.categoria ? (
+              <span title={`Alíquota aprox.: ${(CATEGORIA_MAP[p.categoria]?.aliquota * 100 || 0).toFixed(1)}%`}>
+                {formatBRL(tributos)}
+              </span>
+            ) : '-'}
+          </Td>
+
+          {/* Estoque */}
+          <Td right>
+            {isPai ? (
+              <span className="text-muted-foreground">—</span>
+            ) : (
+              <span className={p.estoque_atual <= (p.estoque_minimo || 0) ? 'text-destructive font-semibold' : ''}>
+                {(p.estoque_atual || 0).toLocaleString('pt-BR')} {p.unidade_medida || 'UN'}
+              </span>
+            )}
+          </Td>
+
+          {/* Status */}
+          <Td className="text-center">
+            <div className="flex flex-col items-center gap-0.5">
+              <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[9px] px-1.5 h-4">
+                {p.ativo ? 'Ativo' : 'Inativo'}
+              </Badge>
+              {isPai && <Badge className="text-[9px] px-1 h-4 bg-orange-100 text-orange-700 border-0">Pai</Badge>}
+              {isVariacao && <Badge variant="outline" className="text-[9px] px-1 h-4">Var.</Badge>}
+            </div>
+          </Td>
+
+          {/* Ações */}
+          <Td className="text-center">
+            <div className="flex gap-0.5 justify-center">
+              <Link to={`/produtos/editar/${p.id}`}>
+                <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <Edit className="w-3 h-3" />
+                </Button>
+              </Link>
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7"
+                onClick={() => toggleMutation.mutate({ id: p.id, ativo: p.ativo })}
+              >
+                {p.ativo ? <ToggleRight className="w-3.5 h-3.5 text-primary" /> : <ToggleLeft className="w-3.5 h-3.5 text-muted-foreground" />}
+              </Button>
+              <Button
+                variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10"
+                onClick={() => deleteMutation.mutate(p.id)}
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
+          </Td>
+        </tr>
+
+        {/* Variações expandidas */}
+        {isPai && isExpanded && variacoes.map(v => renderProductRow(v, true, p.nome))}
+      </React.Fragment>
+    );
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">Produtos</h1>
@@ -104,209 +260,70 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <div className="relative w-full max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome, SKU ou EAN..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
+      {/* Busca + Filtros + Excluir */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative w-full max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, SKU ou EAN..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 h-8"
+            />
+          </div>
+          {selectedCount > 0 && (
+            <Button variant="destructive" size="sm" className="gap-1.5 h-8" onClick={handleDeleteSelected}>
+              <Trash2 className="w-3.5 h-3.5" />
+              Excluir {selectedCount} selecionado{selectedCount > 1 ? 's' : ''}
+            </Button>
+          )}
         </div>
-        {selectedCount > 0 && (
-          <Button
-            variant="destructive"
-            size="sm"
-            className="gap-2 shrink-0"
-            onClick={handleDeleteSelected}
-          >
-            <Trash2 className="w-4 h-4" />
-            Excluir {selectedCount} selecionado{selectedCount > 1 ? 's' : ''}
-          </Button>
-        )}
+        <ProductFilters products={products} filters={filters} onChange={setFilters} />
       </div>
 
+      {/* Tabela planilha */}
       {filtered.length === 0 && !isLoading ? (
-        <Card className="p-12 text-center">
+        <div className="border rounded-lg p-12 text-center bg-card">
           <Package className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-lg">Nenhum produto encontrado</h3>
           <p className="text-muted-foreground text-sm mt-1">Cadastre um produto manualmente, importe via XML ou importe do Bling</p>
-        </Card>
+        </div>
       ) : (
-        <Card>
+        <div className="rounded-lg border overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <Th w="w-8">
                     <Checkbox
                       checked={filtered.length > 0 && selectedCount === filtered.length}
                       onCheckedChange={toggleAll}
                     />
-                  </TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>EAN</TableHead>
-                  <TableHead className="text-right">Custo</TableHead>
-                  <TableHead className="text-right">Preço Venda</TableHead>
-                  <TableHead className="text-right">Estoque</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-24"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((p) => {
-                  const isPai = p.tipo === 'pai';
-                  const variacoes = isPai ? (variacoesPorPai[p.id] || []) : [];
-                  const isExpanded = expanded[p.id];
-
-                  return (
-                    <React.Fragment key={p.id}>
-                      <TableRow className={selected[p.id] ? 'bg-muted/40' : isPai ? 'bg-orange-50/40' : ''}>
-                        <TableCell>
-                          <Checkbox
-                            checked={!!selected[p.id]}
-                            onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {isPai && (
-                              <button
-                                onClick={() => toggleExpanded(p.id)}
-                                className="p-0.5 rounded hover:bg-orange-200 transition-colors flex-shrink-0"
-                              >
-                                {isExpanded
-                                  ? <ChevronDown className="w-4 h-4 text-orange-600" />
-                                  : <ChevronRight className="w-4 h-4 text-orange-600" />
-                                }
-                              </button>
-                            )}
-                            {p.fotos?.[0] ? (
-                              <img src={p.fotos[0]} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" alt="" />
-                            ) : (
-                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isPai ? 'bg-orange-100' : 'bg-muted'}`}>
-                                {isPai
-                                  ? <Layers className="w-4 h-4 text-orange-500" />
-                                  : <Package className="w-4 h-4 text-muted-foreground" />
-                                }
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-medium">
-                                {p.nome}
-                                {isPai && variacoes.length > 0 && (
-                                  <span className="text-xs text-orange-600 ml-1.5 font-normal">
-                                    ({variacoes.length} variações)
-                                  </span>
-                                )}
-                              </p>
-                              {p.marca && <p className="text-xs text-muted-foreground">{p.marca}</p>}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm font-mono">{p.sku}</TableCell>
-                        <TableCell className="text-sm font-mono">{p.ean || '-'}</TableCell>
-                        <TableCell className="text-right text-sm">
-                          {p.preco_custo ? `R$ ${p.preco_custo.toFixed(2)}` : '-'}
-                        </TableCell>
-                        <TableCell className="text-right text-sm font-medium">
-                          {p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : (isPai ? <span className="text-muted-foreground text-xs">ver variações</span> : '-')}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {isPai ? (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          ) : (
-                            <span className={p.estoque_atual <= (p.estoque_minimo || 0) ? 'text-destructive font-semibold' : ''}>
-                              {p.estoque_atual || 0} {p.unidade_medida || 'UN'}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">
-                              {p.ativo ? 'Ativo' : 'Inativo'}
-                            </Badge>
-                            {isPai && <Badge className="text-[10px] bg-orange-100 text-orange-700 border-0">Pai</Badge>}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Link to={`/produtos/editar/${p.id}`}>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <Edit className="w-3.5 h-3.5" />
-                              </Button>
-                            </Link>
-                            <Button
-                              variant="ghost" size="icon" className="h-8 w-8"
-                              onClick={() => toggleMutation.mutate({ id: p.id, ativo: p.ativo })}
-                            >
-                              {p.ativo ? <ToggleRight className="w-4 h-4 text-primary" /> : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
-                            </Button>
-                            <Button
-                              variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => deleteMutation.mutate(p.id)}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-
-                      {/* Linhas de variações expandidas */}
-                      {isPai && isExpanded && variacoes.map(v => (
-                        <TableRow key={v.id} className="bg-muted/10 border-l-2 border-l-orange-200">
-                          <TableCell />
-                          <TableCell className="pl-14">
-                            <div className="flex items-center gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                              <div>
-                                <p className="text-sm">{v.variacoes_atributos || v.nome}</p>
-                                {v.ean && <p className="text-xs text-muted-foreground font-mono">{v.ean}</p>}
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm font-mono text-muted-foreground">{v.sku}</TableCell>
-                          <TableCell className="text-sm font-mono text-muted-foreground">{v.ean || '-'}</TableCell>
-                          <TableCell className="text-right text-sm">
-                            {v.preco_custo ? `R$ ${v.preco_custo.toFixed(2)}` : '-'}
-                          </TableCell>
-                          <TableCell className="text-right text-sm font-medium">
-                            {v.preco_venda ? `R$ ${v.preco_venda.toFixed(2)}` : '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <span className={v.estoque_atual <= (v.estoque_minimo || 0) ? 'text-destructive font-semibold' : 'text-sm'}>
-                              {v.estoque_atual || 0} {v.unidade_medida || 'UN'}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-[10px]">Variação</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Link to={`/produtos/editar/${v.id}`}>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <Edit className="w-3.5 h-3.5" />
-                                </Button>
-                              </Link>
-                              <Button
-                                variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                onClick={() => deleteMutation.mutate(v.id)}
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </React.Fragment>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </Th>
+                  <Th w="w-10">Foto</Th>
+                  <Th w="w-28">Categoria</Th>
+                  <Th>Produto</Th>
+                  <Th w="w-28">SKU</Th>
+                  <Th w="w-28">EAN</Th>
+                  <Th right w="w-24">Custo</Th>
+                  <Th right w="w-24">Preço Venda</Th>
+                  <Th right w="w-24">Tributos Aprox.</Th>
+                  <Th right w="w-28">Estoque</Th>
+                  <Th w="w-20">Status</Th>
+                  <Th w="w-24">Ações</Th>
+                </tr>
+              </thead>
+              <tbody className="bg-card">
+                {filtered.map(p => renderProductRow(p))}
+              </tbody>
+            </table>
           </div>
-        </Card>
+          {/* Legenda tributos */}
+          <div className="px-3 py-1.5 border-t bg-muted/30 text-[10px] text-muted-foreground">
+            * Tributos aproximados calculados com base nas alíquotas médias IBPT por categoria (federal + estadual). Valores estimados.
+          </div>
+        </div>
       )}
 
       <BlingImportDialog

@@ -21,6 +21,30 @@
     "marca": {
       "type": "string"
     },
+    "categoria": {
+      "type": "string",
+      "enum": [
+        "eletronicos",
+        "informatica",
+        "eletrodomesticos",
+        "vestuario",
+        "calcados",
+        "acessorios_moda",
+        "moveis",
+        "cama_mesa_banho",
+        "brinquedos",
+        "esportes",
+        "beleza_saude",
+        "alimentos_bebidas",
+        "automotivo",
+        "ferramentas",
+        "livros_midia",
+        "joias_relogios",
+        "pet_shop",
+        "outros"
+      ],
+      "description": "Categoria do produto"
+    },
     "ncm": {
       "type": "string",
       "description": "NCM - 8 d\u00edgitos"
@@ -63,7 +87,11 @@
       "items": {
         "type": "string"
       },
-      "description": "URLs das fotos"
+      "description": "URLs das fotos do produto"
+    },
+    "atributos_extras": {
+      "type": "object",
+      "description": "Atributos extras din\u00e2micos (cor, tamanho, voltagem, etc)"
     },
     "preco_custo": {
       "type": "number",
@@ -109,28 +137,22 @@
         "pai",
         "variacao"
       ],
-      "default": "simples",
-      "description": "Tipo do produto: simples, pai (com varia\u00e7\u00f5es) ou varia\u00e7\u00e3o"
+      "default": "simples"
     },
     "produto_pai_id": {
-      "type": "string",
-      "description": "ID do produto pai no Base44 (apenas para varia\u00e7\u00f5es)"
+      "type": "string"
     },
     "bling_pai_id": {
-      "type": "string",
-      "description": "ID do produto pai no Bling (apenas para varia\u00e7\u00f5es)"
+      "type": "string"
     },
     "variacoes_atributos": {
-      "type": "string",
-      "description": "Atributos da varia\u00e7\u00e3o, ex: Cor: Azul | Tamanho: M"
+      "type": "string"
     },
     "company_id": {
-      "type": "string",
-      "description": "ID da empresa propriet\u00e1ria"
+      "type": "string"
     },
     "bling_id": {
-      "type": "string",
-      "description": "ID do produto no Bling (para sincroniza\u00e7\u00e3o)"
+      "type": "string"
     }
   },
   "required": [
