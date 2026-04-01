@@ -38,7 +38,7 @@ export default function SyncStatus() {
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      const res = await base44.functions.invoke('blingSyncJob', { scheduled: false });
+      const res = await base44.functions.invoke('blingSyncJob', { full: true });
       const logId = res?.data?.log_id;
       if (logId) {
         setActiveLogId(logId);
