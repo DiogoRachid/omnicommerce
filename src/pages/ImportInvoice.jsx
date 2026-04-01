@@ -44,15 +44,18 @@ export default function ImportInvoice() {
       const xmlContent = await (await fetch(file_url)).text();
 
       const result = await base44.functions.invoke('parseNFeXml', { xml_content: xmlContent });
+      
+      console.log('ParseNFeXml result:', result);
 
-      if (result.data?.success && result.data?.nf) {
-        setParsedData({ ...result.data, xml_url: file_url });
+      if (result.data?.success) {
+        setParsedData(result.data);
         toast.success('XML processado com sucesso! Revise os dados antes de confirmar.');
       } else {
         toast.error('Erro ao processar XML: ' + (result.data?.error || 'Formato inválido'));
+        console.error('Erro na resposta:', result.data);
       }
     } catch (err) {
-      console.error('Erro:', err);
+      console.error('Erro ao fazer upload:', err);
       toast.error('Erro ao fazer upload: ' + err.message);
     } finally {
       setUploading(false);
