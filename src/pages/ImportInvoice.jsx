@@ -150,19 +150,20 @@ export default function ImportInvoice() {
            }
          } else {
            const sku = `NF${parsedData.nf.numero || 'X'}-${idx + 1}`;
-           const newProduct = await base44.entities.Product.create({
-             sku,
-             ean: item.ean || '',
-             nome: item.descricao || `Produto NF ${idx + 1}`,
-             ncm: item.ncm || '',
-             unidade_medida: item.unidade || 'UN',
-             preco_custo: item.valor_unitario || 0,
-             estoque_atual: item.quantidade || 0,
-             estoque_minimo: 0,
-             origem: 'xml_nfe',
-             ativo: true,
-             company_id: companyId,
-           });
+           try {
+             const newProduct = await base44.entities.Product.create({
+               sku,
+               ean: item.ean || '',
+               nome: item.descricao || `Produto NF ${idx + 1}`,
+               ncm: item.ncm || '',
+               unidade_medida: item.unidade || 'UN',
+               preco_custo: item.valor_unitario || 0,
+               estoque_atual: item.quantidade || 0,
+               estoque_minimo: 0,
+               origem: 'xml_nfe',
+               ativo: true,
+               company_id: companyId,
+             });
            await base44.entities.StockMovement.create({
              product_id: newProduct.id,
              product_name: newProduct.nome,
@@ -174,8 +175,11 @@ export default function ImportInvoice() {
              invoice_number: parsedData.nf.numero,
              company_id: companyId,
            });
-         }
-       }
+           } catch (err) {
+           console.error(`Erro ao criar produto no índice ${idx}:`, err.message);
+           }
+           }
+           }
 
        // Cria Conta a Pagar se houver duplicatas
        if (parsedData.duplicatas && parsedData.duplicatas.length > 0) {
