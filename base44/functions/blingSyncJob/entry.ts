@@ -93,6 +93,7 @@ function buildProductRecord(p, companyId, extraAtributos = {}) {
 }
 
 async function updateLog(base44, logId, patch) {
+  if (!logId) return; // sem log em andamento
   try { await base44.asServiceRole.entities.SyncLog.update(logId, patch); } catch { /* best effort */ }
 }
 
@@ -296,28 +297,21 @@ Deno.serve(async (req) => {
     if (companies?.length > 0) companyId = companies[0].id;
   } catch { /* sem empresa */ }
 
-  const tipo = (isScheduled || !isManualFull) ? 'completo' : 'completo';
-
-  // Cria log inicial
-  const logRecord = await base44.asServiceRole.entities.SyncLog.create({
-    tipo, status: 'em_andamento',
-    iniciado_em: new Date().toISOString(),
-    company_id: companyId,
-    produtos_atualizados: 0, produtos_criados: 0,
-    estoques_atualizados: 0, vendas_criadas: 0, erros: 0,
-    detalhes: isScheduled ? 'Iniciando sync automático (delta)...' : 'Iniciando sync completo...',
-  });
-  const logId = logRecord.id;
+  let logId = null;
 
   try {
     // Agendado = delta (rápido, cabe no timeout). Manual com full=true = completo (aceita ser lento).
     const result = isScheduled
-      ? await syncDelta(base44, accessToken, companyId, logId)
-      : await syncFull(base44, accessToken, companyId, logId);
+      ? await syncDelta(base44, accessToken, companyId, null)
+      : await syncFull(base44, accessToken, companyId, null);
 
-    await base44.asServiceRole.entities.SyncLog.update(logId, {
+    // Cria log apenas após sucesso
+    const logRecord = await base44.asServiceRole.entities.SyncLog.create({
+      tipo: 'completo',
       status: 'sucesso',
+      iniciado_em: new Date().toISOString(),
       finalizado_em: new Date().toISOString(),
+      company_id: companyId,
       produtos_criados: result.prodCriados,
       produtos_atualizados: result.prodAtualizados,
       estoques_atualizados: 0,
@@ -325,10 +319,14 @@ Deno.serve(async (req) => {
       erros: result.erros,
       detalhes: `✅ Concluído! +${result.prodCriados} criados, ~${result.prodAtualizados} atualizados, ${result.vendasCriadas} vendas. Erros: ${result.erros}.`,
     });
+    logId = logRecord.id;
 
     return Response.json({ success: true, log_id: logId, ...result });
   } catch (e) {
-    await base44.asServiceRole.entities.SyncLog.delete(logId);
+    // Se houver erro e log foi criado, deleta
+    if (logId) {
+      try { await base44.asServiceRole.entities.SyncLog.delete(logId); } catch { }
+    }
     return Response.json({ error: e.message }, { status: 500 });
   }
 });
