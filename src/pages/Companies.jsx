@@ -15,7 +15,7 @@ import BlingPanel from '@/components/BlingPanel';
 
 const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
 
-const BLING_REDIRECT_URI = `https://api.base44.com/api/apps/prod/69c847515e26f8ca005176ef/functions/blingCallback`;
+const BLING_REDIRECT_URI = 'https://classy-omni-stock-flow.base44.app/bling-callback';
 
 const emptyCompany = {
   razao_social: '', nome_fantasia: '', cnpj: '', inscricao_estadual: '',
