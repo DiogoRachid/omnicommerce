@@ -3,44 +3,33 @@ import { base44 } from '@/api/base44Client';
 import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function BlingCallback() {
-  const [status, setStatus] = useState('loading'); // loading | success | error
+  const [status, setStatus] = useState('loading');
   const [error, setError] = useState('');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
-    const state = params.get('state');
 
-    if (!code || state !== 'bling_oauth') {
-      setError('Parâmetros inválidos na URL de callback.');
+    if (!code) {
+      setError('Parâmetro "code" não encontrado na URL.');
       setStatus('error');
       return;
     }
 
-    const exchange = async () => {
-      try {
-        const res = await base44.functions.invoke('blingProxy', {
-          action: 'exchange',
-          payload: {
-            code,
-            redirect_uri: 'https://classy-omni-stock-flow.base44.app/bling-callback',
-          },
-        });
+    base44.functions.invoke('blingExchangeToken', { code })
+      .then((res) => {
         if (res.data?.success) {
           setStatus('success');
-          setTimeout(() => {
-            window.location.href = '/configuracoes';
-          }, 2000);
+          setTimeout(() => { window.location.href = '/configuracoes'; }, 1500);
         } else {
-          throw new Error(res.data?.error || 'Erro ao trocar o código pelos tokens.');
+          setError(res.data?.error || 'Erro ao processar autenticação.');
+          setStatus('error');
         }
-      } catch (err) {
+      })
+      .catch((err) => {
         setError(err.message || 'Erro inesperado.');
         setStatus('error');
-      }
-    };
-
-    exchange();
+      });
   }, []);
 
   return (
@@ -49,14 +38,15 @@ export default function BlingCallback() {
         {status === 'loading' && (
           <>
             <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
-            <p className="text-muted-foreground">Conectando ao Bling...</p>
+            <p className="text-lg font-medium">Autenticando...</p>
+            <p className="text-muted-foreground text-sm">Conectando sua conta ao Bling</p>
           </>
         )}
         {status === 'success' && (
           <>
             <CheckCircle2 className="w-10 h-10 text-green-500 mx-auto" />
             <p className="font-semibold text-green-700">Bling conectado com sucesso!</p>
-            <p className="text-muted-foreground text-sm">Redirecionando para Configurações...</p>
+            <p className="text-muted-foreground text-sm">Redirecionando...</p>
           </>
         )}
         {status === 'error' && (
