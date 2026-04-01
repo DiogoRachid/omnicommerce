@@ -7,11 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Package, Plus, Search, Edit, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Package, Plus, Search, Edit, ToggleLeft, ToggleRight, Trash2 } from 'lucide-react';
 
 export default function Products() {
   const { selectedCompany } = useOutletContext();
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState({});
   const queryClient = useQueryClient();
 
   const { data: products = [], isLoading } = useQuery({
@@ -28,6 +30,27 @@ export default function Products() {
     mutationFn: ({ id, ativo }) => base44.entities.Product.update(id, { ativo: !ativo }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.Product.delete(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+  });
+
+  const handleDeleteSelected = async () => {
+    const ids = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+    for (const id of ids) {
+      await base44.entities.Product.delete(id);
+    }
+    setSelected({});
+    queryClient.invalidateQueries({ queryKey: ['products'] });
+  };
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+  const toggleAll = (val) => {
+    const s = {};
+    filtered.forEach(p => { s[p.id] = val; });
+    setSelected(s);
+  };
 
   const filtered = products.filter(p =>
     p.nome?.toLowerCase().includes(search.toLowerCase()) ||
@@ -52,14 +75,27 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="relative w-full max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome, SKU ou EAN..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      <div className="flex items-center gap-3">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome, SKU ou EAN..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {selectedCount > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="gap-2 shrink-0"
+            onClick={handleDeleteSelected}
+          >
+            <Trash2 className="w-4 h-4" />
+            Excluir {selectedCount} selecionado{selectedCount > 1 ? 's' : ''}
+          </Button>
+        )}
       </div>
 
       {filtered.length === 0 && !isLoading ? (
@@ -74,6 +110,12 @@ export default function Products() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={filtered.length > 0 && selectedCount === filtered.length}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>EAN</TableHead>
@@ -86,7 +128,13 @@ export default function Products() {
               </TableHeader>
               <TableBody>
                 {filtered.map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow key={p.id} className={selected[p.id] ? 'bg-muted/40' : ''}>
+                    <TableCell>
+                      <Checkbox
+                        checked={!!selected[p.id]}
+                        onCheckedChange={(v) => setSelected(prev => ({ ...prev, [p.id]: v }))}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
                         {p.fotos?.[0] ? (
@@ -132,6 +180,12 @@ export default function Products() {
                           onClick={() => toggleMutation.mutate({ id: p.id, ativo: p.ativo })}
                         >
                           {p.ativo ? <ToggleRight className="w-4 h-4 text-primary" /> : <ToggleLeft className="w-4 h-4 text-muted-foreground" />}
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => deleteMutation.mutate(p.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
                     </TableCell>
