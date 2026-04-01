@@ -370,9 +370,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, log_id: logId, ...result });
   } catch (e) {
-    await base44.asServiceRole.entities.SyncLog.update(logId, {
-      status: 'erro', finalizado_em: new Date().toISOString(), detalhes: e.message,
-    });
+    await base44.asServiceRole.entities.SyncLog.delete(logId);
     return Response.json({ error: e.message }, { status: 500 });
   }
 });
