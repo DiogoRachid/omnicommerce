@@ -76,6 +76,30 @@ export default function ImportInvoice() {
     mutationFn: async () => {
       const companyId = selectedCompany !== 'all' ? selectedCompany : undefined;
 
+      // Cria fornecedor se não existir
+      let supplier = null;
+      if (parsedData.fornecedor?.cnpj && parsedData.fornecedor?.nome) {
+        try {
+          const existing = await base44.entities.Client.filter({
+            cpf_cnpj: parsedData.fornecedor.cnpj,
+            company_id: companyId,
+          }, '-created_date', 1);
+
+          if (existing && existing.length > 0) {
+            supplier = existing[0];
+          } else {
+            supplier = await base44.entities.Client.create({
+              nome: parsedData.fornecedor.nome,
+              tipo_pessoa: 'juridica',
+              cpf_cnpj: parsedData.fornecedor.cnpj,
+              company_id: companyId,
+            });
+          }
+        } catch (err) {
+          console.warn('Erro ao criar fornecedor:', err);
+        }
+      }
+
       const invoiceItems = (parsedData.nf?.items || []).map((item, idx) => ({
         ...item,
         product_id: itemMappings[idx] || null,
@@ -178,10 +202,16 @@ export default function ImportInvoice() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
       toast.success('Nota fiscal importada com sucesso!');
       navigate('/notas-fiscais');
     },
-  });
+    onError: (error) => {
+      console.error('Erro na importação:', error);
+      toast.error('Erro ao importar: ' + error.message);
+    },
+    });
 
   return (
     <div className="space-y-6 max-w-5xl">
