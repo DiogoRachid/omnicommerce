@@ -49,6 +49,16 @@ export default function SyncStatus() {
     }
   };
 
+  const handleStopSync = async () => {
+    if (activeLogId) {
+      try {
+        await base44.asServiceRole.entities.SyncLog.delete(activeLogId);
+      } catch { /* best effort */ }
+    }
+    setActiveLogId(null);
+    queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+  };
+
   const formatDate = (iso) => {
     if (!iso) return '-';
     try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR }); } catch { return iso; }
@@ -80,12 +90,19 @@ export default function SyncStatus() {
             Atualização automática de produtos, estoque e vendas — executa a cada hora
           </p>
         </div>
-        <Button onClick={handleManualSync} disabled={syncing || isRunning} className="gap-2">
-          {(syncing || isRunning)
-            ? <Loader2 className="w-4 h-4 animate-spin" />
-            : <RefreshCw className="w-4 h-4" />}
-          {isRunning ? 'Sincronizando...' : syncing ? 'Iniciando...' : 'Sincronizar agora'}
-        </Button>
+        <div className="flex gap-2">
+          {isRunning && (
+            <Button onClick={handleStopSync} variant="destructive" size="sm" className="gap-2">
+              <XCircle className="w-4 h-4" /> Parar e limpar
+            </Button>
+          )}
+          <Button onClick={handleManualSync} disabled={syncing || isRunning} className="gap-2">
+            {(syncing || isRunning)
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <RefreshCw className="w-4 h-4" />}
+            {isRunning ? 'Sincronizando...' : syncing ? 'Iniciando...' : 'Sincronizar agora'}
+          </Button>
+        </div>
       </div>
 
       {/* Painel de atividade ao vivo */}
