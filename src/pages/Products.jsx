@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +21,8 @@ export default function Products() {
   const [expanded, setExpanded] = useState({});
   const [showBlingImport, setShowBlingImport] = useState(false);
   const [filters, setFilters] = useState([]);
+  const [page, setPage] = useState(0);
+  const ITEMS_PER_PAGE = 50;
   const queryClient = useQueryClient();
 
   const { data: products = [], isLoading } = useQuery({
@@ -69,10 +71,19 @@ export default function Products() {
     p.ean?.includes(search)
   );
   const filtered = applyFilters(searched, filters);
+  
+  // Paginação
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginatedFiltered = filtered.slice(page * ITEMS_PER_PAGE, (page + 1) * ITEMS_PER_PAGE);
+  
+  // Reset página ao buscar/filtrar
+  useEffect(() => {
+    setPage(0);
+  }, [search, filters]);
 
   const toggleAll = (val) => {
     const s = {};
-    filtered.forEach(p => { s[p.id] = val; });
+    paginatedFiltered.forEach(p => { s[p.id] = val; });
     setSelected(s);
   };
 
@@ -290,39 +301,71 @@ export default function Products() {
           <p className="text-muted-foreground text-sm mt-1">Cadastre um produto manualmente, importe via XML ou importe do Bling</p>
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr>
-                  <Th w="w-8">
-                    <Checkbox
-                      checked={filtered.length > 0 && selectedCount === filtered.length}
-                      onCheckedChange={toggleAll}
-                    />
-                  </Th>
-                  <Th w="w-10">Foto</Th>
-                  <Th w="w-28">Categoria</Th>
-                  <Th>Produto</Th>
-                  <Th w="w-28">SKU</Th>
-                  <Th w="w-28">EAN</Th>
-                  <Th right w="w-24">Custo</Th>
-                  <Th right w="w-24">Preço Venda</Th>
-                  <Th right w="w-24">Tributos Aprox.</Th>
-                  <Th right w="w-28">Estoque</Th>
-                  <Th w="w-20">Status</Th>
-                  <Th w="w-24">Ações</Th>
-                </tr>
-              </thead>
-              <tbody className="bg-card">
-                {filtered.map(p => renderProductRow(p))}
-              </tbody>
-            </table>
+        <div className="space-y-4">
+          <div className="rounded-lg border overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <Th w="w-8">
+                      <Checkbox
+                        checked={paginatedFiltered.length > 0 && selectedCount === paginatedFiltered.length}
+                        onCheckedChange={toggleAll}
+                      />
+                    </Th>
+                    <Th w="w-10">Foto</Th>
+                    <Th w="w-28">Categoria</Th>
+                    <Th>Produto</Th>
+                    <Th w="w-28">SKU</Th>
+                    <Th w="w-28">EAN</Th>
+                    <Th right w="w-24">Custo</Th>
+                    <Th right w="w-24">Preço Venda</Th>
+                    <Th right w="w-24">Tributos Aprox.</Th>
+                    <Th right w="w-28">Estoque</Th>
+                    <Th w="w-20">Status</Th>
+                    <Th w="w-24">Ações</Th>
+                  </tr>
+                </thead>
+                <tbody className="bg-card">
+                  {paginatedFiltered.map(p => renderProductRow(p))}
+                </tbody>
+              </table>
+            </div>
+            {/* Legenda tributos */}
+            <div className="px-3 py-1.5 border-t bg-muted/30 text-[10px] text-muted-foreground">
+              * Tributos aproximados calculados com base nas alíquotas médias IBPT por categoria (federal + estadual). Valores estimados.
+            </div>
           </div>
-          {/* Legenda tributos */}
-          <div className="px-3 py-1.5 border-t bg-muted/30 text-[10px] text-muted-foreground">
-            * Tributos aproximados calculados com base nas alíquotas médias IBPT por categoria (federal + estadual). Valores estimados.
-          </div>
+          
+          {/* Paginação */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border rounded-lg bg-card">
+              <p className="text-xs text-muted-foreground">
+                Mostrando {page * ITEMS_PER_PAGE + 1} a {Math.min((page + 1) * ITEMS_PER_PAGE, filtered.length)} de {filtered.length} produtos
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Anterior
+                </Button>
+                <span className="px-3 py-1.5 text-xs text-muted-foreground">
+                  {page + 1} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page === totalPages - 1}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
