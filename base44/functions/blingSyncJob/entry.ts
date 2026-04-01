@@ -96,137 +96,98 @@ async function updateLog(base44, logId, patch) {
   try { await base44.asServiceRole.entities.SyncLog.update(logId, patch); } catch { /* best effort */ }
 }
 
-// ─── SYNC DELTA: apenas produtos modificados nas últimas 2h (para automação agendada) ─────────
+// ─── SYNC DELTA: apenas primeira página de produtos (para automação agendada, rápido)
 async function syncDelta(base44, accessToken, companyId, logId) {
   let prodCriados = 0, prodAtualizados = 0, vendasCriadas = 0, erros = 0;
 
-  // 1. Produtos alterados recentemente (últimas 2 horas)
-  await updateLog(base44, logId, { detalhes: '📦 Buscando produtos atualizados recentemente no Bling...' });
+  // 1. Produtos mais recentes (primeira página = 100 produtos)
+  await updateLog(base44, logId, { detalhes: '📦 Buscando produtos recentes no Bling...' });
 
-  const dataHoraInicio = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString().replace('T', ' ').substring(0, 16);
   let recentProducts = [];
-  let pagina = 1;
-  while (true) {
-    // criterio=3 = modificados, dataAlteracaoInicial filtra por data
-    const data = await blingGet(accessToken, `/produtos?pagina=${pagina}&limite=100&criterio=3&dataAlteracaoInicial=${encodeURIComponent(dataHoraInicio)}&tipo=T`);
-    const items = data?.data || [];
-    recentProducts = recentProducts.concat(items);
-    if (items.length < 100) break;
-    pagina++;
-    await sleep(DELAY);
-  }
+  // Pega apenas primeira página com criterio=5 (mais vendidos/recentes)
+  try {
+    const data = await blingGet(accessToken, `/produtos?pagina=1&limite=100&criterio=5&tipo=T`);
+    recentProducts = data?.data || [];
+  } catch { /* falha ao buscar, continua com vendas */ }
 
-  await updateLog(base44, logId, { detalhes: `📦 ${recentProducts.length} produtos atualizados. Sincronizando...` });
+  await updateLog(base44, logId, { detalhes: `📦 ${recentProducts.length} produtos para sincronizar...` });
 
   if (recentProducts.length > 0) {
-    // Carrega mapa local
     const localProducts = companyId
       ? await base44.asServiceRole.entities.Product.filter({ company_id: companyId }, '-created_date', 2000)
       : await base44.asServiceRole.entities.Product.list('-created_date', 2000);
     const localByBlingId = {};
     for (const p of localProducts) { if (p.bling_id) localByBlingId[p.bling_id] = p; }
 
+    // Separa simples e com variações
     const simples = recentProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
     const comVariacao = recentProducts.filter(p => p.tipo === 'V' || p.variacoes?.length > 0);
 
-    // Estoques dos simples
-    for (let i = 0; i < simples.length; i += BATCH) {
-      const lote = simples.slice(i, i + BATCH);
-      await Promise.all(lote.map(async (p) => {
-        try {
-          const ed = await blingGet(accessToken, `/estoques?idProduto=${p.id}`);
-          p._estoque = (ed?.data || []).reduce((a, x) => a + parseFloat(x.saldoFisico || 0), 0);
-        } catch { p._estoque = 0; }
-      }));
-      if (i + BATCH < simples.length) await sleep(DELAY);
-    }
-
-    // Upsert simples
+    // Upsert simples (sem buscar estoque, usa valor da listagem)
     for (const p of simples) {
       try {
-        const record = { ...buildProductRecord(p, companyId), tipo: 'simples', estoque_atual: p._estoque ?? 0 };
+        const record = { ...buildProductRecord(p, companyId), tipo: 'simples' };
         const existing = localByBlingId[String(p.id)];
         if (existing) { await base44.asServiceRole.entities.Product.update(existing.id, record); prodAtualizados++; }
         else { await base44.asServiceRole.entities.Product.create(record); prodCriados++; }
       } catch { erros++; }
-      await sleep(50);
     }
 
-    // Produtos com variações: busca detalhe individual
-    for (let i = 0; i < comVariacao.length; i += BATCH) {
-      const lote = comVariacao.slice(i, i + BATCH);
-      await Promise.all(lote.map(async (p) => {
-        try {
-          const det = await blingGet(accessToken, `/produtos/${p.id}`);
-          const prod = det?.data || p;
-
-          const paiRecord = { ...buildProductRecord(prod, companyId), tipo: 'pai', sku: prod.codigo ? `PAI-${prod.codigo}` : `PAI-${prod.id}`, estoque_atual: 0 };
-          const existingPai = localByBlingId[String(prod.id)];
-          let paiId;
-          if (existingPai) { await base44.asServiceRole.entities.Product.update(existingPai.id, paiRecord); paiId = existingPai.id; prodAtualizados++; }
-          else { const c = await base44.asServiceRole.entities.Product.create(paiRecord); paiId = c.id; prodCriados++; }
-
-          for (const v of (prod.variacoes || [])) {
-            try {
-              const ve = await blingGet(accessToken, `/estoques?idProduto=${v.id}`);
-              const estoqueVar = (ve?.data || []).reduce((a, x) => a + parseFloat(x.saldoFisico || 0), 0);
-              const atributosExtrasVar = {};
-              (v.atributos || []).forEach(a => { atributosExtrasVar[a.nome] = a.valor; });
-              const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
-              const varRecord = clean({
-                ...buildProductRecord({ ...prod, id: v.id, codigo: v.codigo, gtin: v.gtin, preco: v.preco || prod.preco, precoCusto: v.precoCusto || prod.precoCusto, imagens: v.imagemURL ? [v.imagemURL] : (prod.imagens || []), dimensoes: v.dimensoes || prod.dimensoes || {}, tributacao: v.tributacao || prod.tributacao || {}, estoque: { saldoFisico: estoqueVar, minimo: v.estoque?.minimo || 0 } }, companyId, atributosExtrasVar),
-                nome: `${prod.nome}${attrs ? ` - ${attrs}` : ''}`,
-                tipo: 'variacao', bling_pai_id: String(prod.id), produto_pai_id: paiId,
-                variacoes_atributos: attrs || undefined,
-              });
-              const existingVar = localByBlingId[String(v.id)];
-              if (existingVar) { await base44.asServiceRole.entities.Product.update(existingVar.id, varRecord); prodAtualizados++; }
-              else { await base44.asServiceRole.entities.Product.create(varRecord); prodCriados++; }
-            } catch { erros++; }
-            await sleep(DELAY);
-          }
-        } catch { erros++; }
-      }));
-      if (i + BATCH < comVariacao.length) await sleep(DELAY);
+    // Variações: busca apenas detalhe do pai
+    for (const p of comVariacao) {
+      try {
+        const det = await blingGet(accessToken, `/produtos/${p.id}`);
+        const prod = det?.data || p;
+        const paiRecord = { ...buildProductRecord(prod, companyId), tipo: 'pai', sku: prod.codigo ? `PAI-${prod.codigo}` : `PAI-${prod.id}`, estoque_atual: 0 };
+        let paiId;
+        const existingPai = localByBlingId[String(prod.id)];
+        if (existingPai) { await base44.asServiceRole.entities.Product.update(existingPai.id, paiRecord); paiId = existingPai.id; prodAtualizados++; }
+        else { const c = await base44.asServiceRole.entities.Product.create(paiRecord); paiId = c.id; prodCriados++; }
+        for (const v of (prod.variacoes || [])) {
+          try {
+            const atributosExtrasVar = {};
+            (v.atributos || []).forEach(a => { atributosExtrasVar[a.nome] = a.valor; });
+            const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
+            const varRecord = clean({ ...buildProductRecord({ ...prod, id: v.id, codigo: v.codigo, gtin: v.gtin, preco: v.preco || prod.preco, precoCusto: v.precoCusto || prod.precoCusto, imagens: v.imagemURL ? [v.imagemURL] : (prod.imagens || []), dimensoes: v.dimensoes || prod.dimensoes || {}, tributacao: v.tributacao || prod.tributacao || {}, estoque: { saldoFisico: v.estoque?.saldoFisico || 0, minimo: v.estoque?.minimo || 0 } }, companyId, atributosExtrasVar), nome: `${prod.nome}${attrs ? ` - ${attrs}` : ''}`, tipo: 'variacao', bling_pai_id: String(prod.id), produto_pai_id: paiId, variacoes_atributos: attrs || undefined });
+            const existingVar = localByBlingId[String(v.id)];
+            if (existingVar) { await base44.asServiceRole.entities.Product.update(existingVar.id, varRecord); prodAtualizados++; }
+            else { await base44.asServiceRole.entities.Product.create(varRecord); prodCriados++; }
+          } catch { erros++; }
+        }
+      } catch { erros++; }
+      await sleep(50);
     }
   }
 
-  // 2. Vendas das últimas 2 horas
+  // 2. Vendas recentes (apenas primeira página)
   await updateLog(base44, logId, {
     produtos_criados: prodCriados, produtos_atualizados: prodAtualizados,
     detalhes: '🛒 Buscando vendas recentes...',
   });
 
-  const dataInicio = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString().split('T')[0];
-  let allOrders = [];
-  let op = 1;
-  while (true) {
-    const data = await blingGet(accessToken, `/pedidos/vendas?pagina=${op}&limite=100&dataInicio=${dataInicio}`);
-    const items = data?.data || [];
-    allOrders = allOrders.concat(items);
-    if (items.length < 100) break;
-    op++;
-    await sleep(DELAY);
-  }
+  try {
+    const data = await blingGet(accessToken, `/pedidos/vendas?pagina=1&limite=100`);
+    const allOrders = data?.data || [];
+    
+    if (allOrders.length > 0) {
+      const existingSales = companyId
+        ? await base44.asServiceRole.entities.Sale.filter({ company_id: companyId }, '-created_date', 500)
+        : await base44.asServiceRole.entities.Sale.list('-created_date', 500);
+      const existingBlingIds = new Set(existingSales.map(s => s.marketplace_order_id).filter(Boolean));
 
-  if (allOrders.length > 0) {
-    const existingSales = companyId
-      ? await base44.asServiceRole.entities.Sale.filter({ company_id: companyId }, '-created_date', 500)
-      : await base44.asServiceRole.entities.Sale.list('-created_date', 500);
-    const existingBlingIds = new Set(existingSales.map(s => s.marketplace_order_id).filter(Boolean));
+      const CANAL_MAP = { 'Loja Virtual': 'ecommerce', 'Mercado Livre': 'mercado_livre', 'Shopee': 'shopee', 'Amazon': 'amazon', 'B2B': 'b2b' };
+      const STATUS_MAP = { 0: 'pendente', 1: 'pendente', 3: 'confirmada', 4: 'confirmada', 6: 'cancelada', 9: 'devolvida' };
 
-    const CANAL_MAP = { 'Loja Virtual': 'ecommerce', 'Mercado Livre': 'mercado_livre', 'Shopee': 'shopee', 'Amazon': 'amazon', 'B2B': 'b2b' };
-    const STATUS_MAP = { 0: 'pendente', 1: 'pendente', 3: 'confirmada', 4: 'confirmada', 6: 'cancelada', 9: 'devolvida' };
-
-    for (const order of allOrders) {
-      if (existingBlingIds.has(String(order.id))) continue;
-      try {
-        const orderItems = (order.itens || []).map(item => ({ product_name: item.produto?.nome || '', sku: item.produto?.codigo || '', quantidade: parseFloat(item.quantidade || 1), preco_unitario: parseFloat(item.valor || 0), desconto: 0, total: parseFloat(item.quantidade || 1) * parseFloat(item.valor || 0) }));
-        await base44.asServiceRole.entities.Sale.create(clean({ canal: CANAL_MAP[order.loja?.nome] || 'outro', status: STATUS_MAP[order.situacao?.id] || 'pendente', client_name: order.contato?.nome || undefined, subtotal: parseFloat(order.totalProdutos || order.total || 0), desconto: parseFloat(order.desconto?.valor || 0), frete: parseFloat(order.transporte?.frete || 0), total: parseFloat(order.totalProdutos || order.total || 0), forma_pagamento: 'marketplace', marketplace_order_id: String(order.id), company_id: companyId || undefined, items: orderItems }));
-        vendasCriadas++;
-      } catch { erros++; }
+      for (const order of allOrders) {
+        if (existingBlingIds.has(String(order.id))) continue;
+        try {
+          const orderItems = (order.itens || []).map(item => ({ product_name: item.produto?.nome || '', sku: item.produto?.codigo || '', quantidade: parseFloat(item.quantidade || 1), preco_unitario: parseFloat(item.valor || 0), desconto: 0, total: parseFloat(item.quantidade || 1) * parseFloat(item.valor || 0) }));
+          await base44.asServiceRole.entities.Sale.create(clean({ canal: CANAL_MAP[order.loja?.nome] || 'outro', status: STATUS_MAP[order.situacao?.id] || 'pendente', client_name: order.contato?.nome || undefined, subtotal: parseFloat(order.totalProdutos || order.total || 0), desconto: parseFloat(order.desconto?.valor || 0), frete: parseFloat(order.transporte?.frete || 0), total: parseFloat(order.totalProdutos || order.total || 0), forma_pagamento: 'marketplace', marketplace_order_id: String(order.id), company_id: companyId || undefined, items: orderItems }));
+          vendasCriadas++;
+        } catch { erros++; }
+      }
     }
-  }
+  } catch { /* falha ao buscar vendas, continua */ }
 
   return { prodCriados, prodAtualizados, vendasCriadas, erros };
 }
