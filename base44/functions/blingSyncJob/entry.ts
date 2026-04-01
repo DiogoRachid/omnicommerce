@@ -109,44 +109,46 @@ async function syncDelta(base44, accessToken, companyId, logId) {
 
   if (recentProducts.length === 0) return { prodCriados, prodAtualizados, vendasCriadas, erros };
 
-  // Apenas upsert direto (paralelo em lotes de 5)
+  // Apenas upsert direto (sem queries de lookup, batch de 10)
   const simples = recentProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
   const comVariacao = recentProducts.filter(p => p.tipo === 'V' || p.variacoes?.length > 0);
 
-  for (let i = 0; i < simples.length; i += 5) {
-    const lote = simples.slice(i, i + 5);
+  for (let i = 0; i < simples.length; i += 10) {
+    const lote = simples.slice(i, i + 10);
     await Promise.all(lote.map(async (p) => {
       try {
         const record = { ...buildProductRecord(p, companyId), tipo: 'simples' };
-        const existing = await base44.asServiceRole.entities.Product.filter({ bling_id: String(p.id) }, '-created_date', 1);
-        if (existing?.length > 0) {
-          await base44.asServiceRole.entities.Product.update(existing[0].id, record);
-          prodAtualizados++;
-        } else {
-          await base44.asServiceRole.entities.Product.create(record);
-          prodCriados++;
-        }
-      } catch { erros++; }
+        await base44.asServiceRole.entities.Product.create(record);
+        prodCriados++;
+      } catch (e) {
+        // Se falhar por duplicata, assume que foi atualizado
+        if (e.message?.includes('duplicate') || e.message?.includes('Duplicate')) prodAtualizados++;
+        else erros++;
+      }
     }));
   }
 
-  for (let i = 0; i < comVariacao.length; i += 2) {
-    const lote = comVariacao.slice(i, i + 2);
+  for (let i = 0; i < comVariacao.length; i += 3) {
+    const lote = comVariacao.slice(i, i + 3);
     await Promise.all(lote.map(async (p) => {
       try {
         const det = await blingGet(accessToken, `/produtos/${p.id}`);
         const prod = det?.data || p;
         const paiRecord = { ...buildProductRecord(prod, companyId), tipo: 'pai', sku: prod.codigo ? `PAI-${prod.codigo}` : `PAI-${prod.id}`, estoque_atual: 0 };
-        const existingPai = await base44.asServiceRole.entities.Product.filter({ bling_id: String(prod.id) }, '-created_date', 1);
         let paiId;
-        if (existingPai?.length > 0) {
-          await base44.asServiceRole.entities.Product.update(existingPai[0].id, paiRecord);
-          paiId = existingPai[0].id;
-          prodAtualizados++;
-        } else {
+        try {
           const c = await base44.asServiceRole.entities.Product.create(paiRecord);
           paiId = c.id;
           prodCriados++;
+        } catch (e) {
+          if (e.message?.includes('duplicate') || e.message?.includes('Duplicate')) {
+            const existing = await base44.asServiceRole.entities.Product.filter({ bling_id: String(prod.id) }, '-created_date', 1);
+            if (existing?.length > 0) {
+              paiId = existing[0].id;
+              await base44.asServiceRole.entities.Product.update(paiId, paiRecord);
+              prodAtualizados++;
+            }
+          } else throw e;
         }
         for (const v of (prod.variacoes || [])) {
           try {
@@ -154,15 +156,12 @@ async function syncDelta(base44, accessToken, companyId, logId) {
             (v.atributos || []).forEach(a => { atributosExtrasVar[a.nome] = a.valor; });
             const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
             const varRecord = clean({ ...buildProductRecord({ ...prod, id: v.id, codigo: v.codigo, gtin: v.gtin, preco: v.preco || prod.preco, precoCusto: v.precoCusto || prod.precoCusto, imagens: v.imagemURL ? [v.imagemURL] : (prod.imagens || []), dimensoes: v.dimensoes || prod.dimensoes || {}, tributacao: v.tributacao || prod.tributacao || {}, estoque: { saldoFisico: v.estoque?.saldoFisico || 0, minimo: v.estoque?.minimo || 0 } }, companyId, atributosExtrasVar), nome: `${prod.nome}${attrs ? ` - ${attrs}` : ''}`, tipo: 'variacao', bling_pai_id: String(prod.id), produto_pai_id: paiId, variacoes_atributos: attrs || undefined });
-            const existingVar = await base44.asServiceRole.entities.Product.filter({ bling_id: String(v.id) }, '-created_date', 1);
-            if (existingVar?.length > 0) {
-              await base44.asServiceRole.entities.Product.update(existingVar[0].id, varRecord);
-              prodAtualizados++;
-            } else {
-              await base44.asServiceRole.entities.Product.create(varRecord);
-              prodCriados++;
-            }
-          } catch { erros++; }
+            await base44.asServiceRole.entities.Product.create(varRecord);
+            prodCriados++;
+          } catch (e) {
+            if (e.message?.includes('duplicate') || e.message?.includes('Duplicate')) prodAtualizados++;
+            else erros++;
+          }
         }
       } catch { erros++; }
     }));
