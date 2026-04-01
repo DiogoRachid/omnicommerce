@@ -176,5 +176,70 @@ Deno.serve(async (req) => {
     return Response.json(data);
   }
 
+  if (action === 'listProductsFull') {
+    const accessToken = await getValidAccessToken(base44);
+
+    // 1. Busca todos os produtos paginado
+    let allProducts = [];
+    let pagina = 1;
+    while (true) {
+      const data = await blingRequest(accessToken, `/produtos?pagina=${pagina}&limite=100&criterio=5&tipo=T`);
+      const items = data?.data || [];
+      allProducts = allProducts.concat(items);
+      if (items.length < 100) break;
+      pagina++;
+    }
+
+    const produtos_simples = [];
+    const produtos_pai = [];
+
+    for (const p of allProducts) {
+      // Se tem variacoes no resumo (pode ser campo vazio ou ausente na listagem)
+      // Precisamos buscar o detalhe para saber se tem variações
+      // A listagem retorna variacoes apenas no detalhe individual
+      // Estratégia: buscar detalhe de todos, mas em paralelo em lotes
+      let detalhe = null;
+      try {
+        const det = await blingRequest(accessToken, `/produtos/${p.id}`);
+        detalhe = det?.data || p;
+      } catch {
+        detalhe = p;
+      }
+
+      const variacoes = detalhe?.variacoes || [];
+      if (variacoes.length > 0) {
+        // Produto pai com variações
+        const variacoesFormatadas = variacoes.map(v => ({
+          id: v.id,
+          nome: v.nome,
+          codigo: v.codigo,
+          preco: v.preco,
+          gtin: v.gtin,
+          estoque: v.estoque?.saldoFisico || 0,
+          atributos: v.variacao ? [{ nome: v.variacao.nome, valor: v.variacao.valor }] : [],
+        }));
+        produtos_pai.push({ ...detalhe, variacoes: variacoesFormatadas });
+      } else {
+        produtos_simples.push(detalhe);
+      }
+    }
+
+    return Response.json({
+      produtos_simples,
+      produtos_pai,
+      total: allProducts.length,
+    });
+  }
+
+  if (action === 'getProductStock') {
+    const accessToken = await getValidAccessToken(base44);
+    const { bling_id } = payload;
+    if (!bling_id) return Response.json({ saldo: 0 });
+    const data = await blingRequest(accessToken, `/estoques?idProduto=${bling_id}`);
+    const itens = data?.data || [];
+    const saldo = itens.reduce((acc, item) => acc + (item.saldoFisico || item.saldoFisicoTotal || 0), 0);
+    return Response.json({ saldo });
+  }
+
   return Response.json({ error: 'Ação desconhecida' }, { status: 400 });
 });

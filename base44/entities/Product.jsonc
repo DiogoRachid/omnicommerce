@@ -102,6 +102,28 @@
       "type": "boolean",
       "default": true
     },
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "simples",
+        "pai",
+        "variacao"
+      ],
+      "default": "simples",
+      "description": "Tipo do produto: simples, pai (com varia\u00e7\u00f5es) ou varia\u00e7\u00e3o"
+    },
+    "produto_pai_id": {
+      "type": "string",
+      "description": "ID do produto pai no Base44 (apenas para varia\u00e7\u00f5es)"
+    },
+    "bling_pai_id": {
+      "type": "string",
+      "description": "ID do produto pai no Bling (apenas para varia\u00e7\u00f5es)"
+    },
+    "variacoes_atributos": {
+      "type": "string",
+      "description": "Atributos da varia\u00e7\u00e3o, ex: Cor: Azul | Tamanho: M"
+    },
     "company_id": {
       "type": "string",
       "description": "ID da empresa propriet\u00e1ria"
