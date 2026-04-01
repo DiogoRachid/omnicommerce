@@ -9,12 +9,29 @@ Deno.serve(async (req) => {
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json();
-  const code = body.code;
+  console.log('=== RAW BODY RECEIVED ===', JSON.stringify(body));
 
-  if (!code) return Response.json({ error: 'Código não informado.' }, { status: 400 });
+  // O SDK base44 pode encapsular o payload em body.payload
+  const code = body.code || body?.payload?.code;
+
+  if (!code) {
+    return Response.json({
+      error: 'Código não informado.',
+      raw_body: body,
+    }, { status: 400 });
+  }
 
   const clientId = Deno.env.get('VITE_BLING_CLIENT_ID');
   const clientSecret = Deno.env.get('VITE_BLING_CLIENT_SECRET');
+
+  if (!clientId || !clientSecret) {
+    return Response.json({
+      error: 'Secrets VITE_BLING_CLIENT_ID ou VITE_BLING_CLIENT_SECRET não configurados.',
+      has_client_id: !!clientId,
+      has_client_secret: !!clientSecret,
+    }, { status: 500 });
+  }
+
   const credentials = btoa(`${clientId}:${clientSecret}`);
 
   const requestBody = new URLSearchParams({
@@ -23,16 +40,11 @@ Deno.serve(async (req) => {
     redirect_uri: REDIRECT_URI,
   });
 
-  // Log detalhado do que está sendo enviado ao Bling
   console.log('=== BLING TOKEN REQUEST ===');
-  console.log('URL:', BLING_TOKEN_URL);
-  console.log('grant_type:', 'authorization_code');
-  console.log('code:', code);
   console.log('redirect_uri:', REDIRECT_URI);
-  console.log('clientId (primeiros 8 chars):', clientId?.substring(0, 8));
-  console.log('clientSecret presente:', !!clientSecret);
-  console.log('Authorization header:', `Basic ${credentials.substring(0, 10)}...`);
-  console.log('Body string:', requestBody.toString());
+  console.log('code (primeiros 10):', code.substring(0, 10));
+  console.log('client_id:', clientId);
+  console.log('Body:', requestBody.toString());
 
   const res = await fetch(BLING_TOKEN_URL, {
     method: 'POST',
@@ -45,9 +57,9 @@ Deno.serve(async (req) => {
   });
 
   const responseText = await res.text();
-  console.log('=== BLING TOKEN RESPONSE ===');
-  console.log('Status HTTP:', res.status);
-  console.log('Response body:', responseText);
+  console.log('=== BLING RESPONSE ===');
+  console.log('Status:', res.status);
+  console.log('Body:', responseText);
 
   let data;
   try {
@@ -63,11 +75,12 @@ Deno.serve(async (req) => {
       bling_response: data,
       debug: {
         redirect_uri_sent: REDIRECT_URI,
-        grant_type: 'authorization_code',
-        code_length: code?.length,
-        client_id_prefix: clientId?.substring(0, 8),
+        code_preview: code.substring(0, 10),
+        code_length: code.length,
+        client_id: clientId,
         has_secret: !!clientSecret,
-      }
+        body_sent: requestBody.toString(),
+      },
     }, { status: 400 });
   }
 
