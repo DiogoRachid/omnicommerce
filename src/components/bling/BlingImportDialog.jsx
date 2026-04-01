@@ -12,6 +12,7 @@ import {
   RefreshCw, Trash2, ChevronRight, ChevronDown, ExternalLink, Layers
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { detectCategoryAndAttributes } from '@/lib/productCategories';
 
 async function callProxy(action, payload = {}) {
   const res = await base44.functions.invoke('blingProxy', { action, payload });
@@ -22,15 +23,22 @@ function clean(obj) {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''));
 }
 
-function buildBaseProduct(p, companyId) {
+function buildBaseProduct(p, companyId, extraAtributos = {}) {
   const d = p.dimensoes || {};
   const fotos = Array.isArray(p.imagens) && p.imagens.length > 0 ? p.imagens : (p.imagemURL ? [p.imagemURL] : []);
 
-  // Monta atributos extras: do campo atributos_extras do backend + campos soltos
-  const atributos_extras = { ...(p.atributos_extras || {}) };
+  // Detecta categoria e atributos automaticamente pelo nome do produto + categoria do Bling
+  const nomeCategoriaBling = p.categoria?.nome || p.categoria || '';
+  const { categoria, atributos } = detectCategoryAndAttributes(p.nome || '', nomeCategoriaBling);
+
+  // Monta atributos_extras: chaves dos atributos relevantes (valor vazio = para preenchimento)
+  // Mescla com os atributos passados (ex: cor/tamanho das variações)
+  const atributos_extras = {};
+  atributos.forEach(attr => { atributos_extras[attr] = extraAtributos[attr] || ''; });
+  // Sobrescreve com valores reais se existirem
+  Object.entries(extraAtributos).forEach(([k, v]) => { atributos_extras[k] = v; });
 
   return clean({
-    // Identificação
     bling_id: String(p.id),
     sku: p.codigo || `BLING-${p.id}`,
     ean: p.gtin || undefined,
@@ -38,29 +46,23 @@ function buildBaseProduct(p, companyId) {
     descricao: p.descricaoCurta || p.descricaoComplementar || undefined,
     marca: p.marca || undefined,
     unidade_medida: p.unidade || 'UN',
-    // Status
+    categoria,
     ativo: p.situacao === 'A',
     origem: 'importacao',
     company_id: companyId || undefined,
-    // Preços
     preco_venda: p.preco ? parseFloat(p.preco) : undefined,
     preco_custo: p.precoCusto || p.precoCompra ? parseFloat(p.precoCusto || p.precoCompra) : undefined,
-    // Fiscal
     ncm: p.tributacao?.ncm || undefined,
     cest: p.tributacao?.cest || undefined,
-    // Dimensões
     altura_cm: d.altura ? parseFloat(d.altura) : undefined,
     largura_cm: d.largura ? parseFloat(d.largura) : undefined,
     comprimento_cm: d.profundidade ? parseFloat(d.profundidade) : undefined,
     peso_bruto_kg: d.pesoBruto ? parseFloat(d.pesoBruto) : undefined,
     peso_liquido_kg: d.pesoLiquido ? parseFloat(d.pesoLiquido) : undefined,
-    // Estoque
     estoque_atual: parseFloat(p.estoque?.saldoFisico || 0),
     estoque_minimo: parseFloat(p.estoque?.minimo || 0),
     estoque_maximo: p.estoque?.maximo ? parseFloat(p.estoque.maximo) : undefined,
-    // Fotos
     fotos: fotos.length > 0 ? fotos : undefined,
-    // Atributos extras dinâmicos
     atributos_extras: Object.keys(atributos_extras).length > 0 ? atributos_extras : undefined,
   });
 }
@@ -109,21 +111,11 @@ export default function BlingImportDialog({ company, open, onClose }) {
     }
   };
 
-  const getStockForProduct = async (blingId) => {
-    try {
-      const res = await callProxy('getProductStock', { bling_id: blingId });
-      return res?.saldo || 0;
-    } catch {
-      return 0;
-    }
-  };
-
   const handleImport = async () => {
     setStep('importing');
     setProgress(0);
     let created = 0, errors = 0;
 
-    // Apagar produtos existentes da empresa
     setProgressLabel('Apagando produtos existentes...');
     const existing = await base44.entities.Product.list('-created_date', 2000);
     const toDelete = company?.id ? existing.filter(p => p.company_id === company.id) : existing;
@@ -136,86 +128,73 @@ export default function BlingImportDialog({ company, open, onClose }) {
     const total = simplesSelected.length + paisSelected.length;
     let done = 0;
 
-    // Importar produtos simples
+    // Produtos simples: busca detalhe+estoque individualmente durante importação
     for (const p of simplesSelected) {
       done++;
       setProgress(Math.round((done / total) * 100));
-      setProgressLabel(`Importando simples ${done}/${total}: ${p.nome}`);
+      setProgressLabel(`Importando ${done}/${total}: ${p.nome}`);
       try {
-        const estoque = await getStockForProduct(p.id);
-        const record = { ...buildBaseProduct(p, company?.id), tipo: 'simples', estoque_atual: estoque };
+        const det = await callProxy('getProductDetail', { bling_id: p.id });
+        const prod = det || p;
+        const record = { ...buildBaseProduct(prod, company?.id), tipo: 'simples', estoque_atual: parseFloat(prod.estoque?.saldoFisico || 0) };
         await base44.entities.Product.create(record);
         created++;
       } catch { errors++; }
     }
 
-    // Importar produtos pai e suas variações
+    // Produtos pai: busca detalhe+variações+estoques individualmente
     for (const p of paisSelected) {
       done++;
       setProgress(Math.round((done / total) * 100));
-      setProgressLabel(`Importando pai ${done}/${total}: ${p.nome}`);
+      setProgressLabel(`Importando variações ${done}/${total}: ${p.nome}`);
       try {
-        const paiRecord = {
-          ...buildBaseProduct(p, company?.id),
-          tipo: 'pai',
-          sku: `PAI-${p.id}`,
-          estoque_atual: 0,
-        };
+        const det = await callProxy('getProductDetail', { bling_id: p.id });
+        const prod = det || p;
+
+        const paiRecord = { ...buildBaseProduct(prod, company?.id), tipo: 'pai', sku: prod.codigo ? `PAI-${prod.codigo}` : `PAI-${prod.id}`, estoque_atual: 0 };
         const paiCriado = await base44.entities.Product.create(paiRecord);
         created++;
 
-        // Criar cada variação
-        const variacoes = p.variacoes || [];
-        for (const v of variacoes) {
+        for (const v of (prod.variacoes || [])) {
           try {
-            const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
-            const nomeVariacao = `${p.nome}${attrs ? ` - ${attrs}` : ''}`;
-            const dv = v.dimensoes || p.dimensoes || {};
-            const fotosVar = (v.imagens && v.imagens.length > 0) ? v.imagens
-              : v.imagemURL ? [v.imagemURL]
-              : (Array.isArray(p.imagens) && p.imagens.length > 0 ? p.imagens : (p.imagemURL ? [p.imagemURL] : []));
-
-            // Atributos extras da variação (para filtros)
+            // Atributos reais da variação (Cor, Tamanho, etc.) do Bling
             const atributosExtrasVar = {};
             (v.atributos || []).forEach(a => { atributosExtrasVar[a.nome] = a.valor; });
 
-            const varRecord = clean({
+            const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
+            const nomeVariacao = `${prod.nome}${attrs ? ` - ${attrs}` : ''}`;
+            const dv = v.dimensoes || prod.dimensoes || {};
+            const fotosVar = v.imagens?.length > 0 ? v.imagens : prod.imagens?.length > 0 ? prod.imagens : [];
+
+            // buildBaseProduct detecta categoria e monta atributos automáticos herdados do pai,
+            // mesclados com os atributos reais da variação (cor, tamanho, etc.)
+            const varBase = buildBaseProduct(
+              {
+                ...prod, id: v.id, codigo: v.codigo, gtin: v.gtin,
+                preco: v.preco || prod.preco, precoCusto: v.precoCusto || prod.precoCusto,
+                imagens: fotosVar, imagemURL: v.imagemURL || prod.imagemURL,
+                dimensoes: dv, tributacao: v.tributacao || prod.tributacao,
+                estoque: { saldoFisico: v.estoque || 0, minimo: v.estoqueMinimo || 0 }
+              },
+              company?.id,
+              atributosExtrasVar
+            );
+
+            await base44.entities.Product.create(clean({
+              ...varBase,
               nome: nomeVariacao,
-              sku: v.codigo || `VAR-${v.id}`,
-              ean: v.gtin || undefined,
-              preco_venda: v.preco ? parseFloat(v.preco) : (p.preco ? parseFloat(p.preco) : undefined),
-              preco_custo: v.precoCusto ? parseFloat(v.precoCusto) : (p.precoCusto ? parseFloat(p.precoCusto) : undefined),
-              ativo: p.situacao === 'A',
-              origem: 'importacao',
-              company_id: company?.id || undefined,
-              bling_id: String(v.id),
-              bling_pai_id: String(p.id),
+              bling_pai_id: String(prod.id),
               produto_pai_id: paiCriado.id,
               tipo: 'variacao',
               variacoes_atributos: attrs || undefined,
-              estoque_atual: parseFloat(v.estoque || 0),
-              estoque_minimo: parseFloat(v.estoqueMinimo || 0),
-              fotos: fotosVar.length > 0 ? fotosVar : undefined,
-              // Dimensões da variação ou herda do pai
-              altura_cm: dv.altura ? parseFloat(dv.altura) : undefined,
-              largura_cm: dv.largura ? parseFloat(dv.largura) : undefined,
-              comprimento_cm: dv.profundidade ? parseFloat(dv.profundidade) : undefined,
-              peso_bruto_kg: dv.pesoBruto ? parseFloat(dv.pesoBruto) : undefined,
-              peso_liquido_kg: dv.pesoLiquido ? parseFloat(dv.pesoLiquido) : undefined,
-              // Fiscal
-              ncm: v.tributacao?.ncm || p.tributacao?.ncm || undefined,
-              cest: v.tributacao?.cest || p.tributacao?.cest || undefined,
-              // Atributos extras para filtros dinâmicos
-              atributos_extras: Object.keys(atributosExtrasVar).length > 0 ? atributosExtrasVar : undefined,
-            });
-            await base44.entities.Product.create(varRecord);
+            }));
             created++;
           } catch { errors++; }
         }
       } catch { errors++; }
     }
 
-    setImportResult({ created, deleted: toDelete.length, errors, total: total });
+    setImportResult({ created, deleted: toDelete.length, errors, total });
     queryClient.invalidateQueries({ queryKey: ['products'] });
     setStep('done');
   };
