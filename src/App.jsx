@@ -16,6 +16,7 @@ import Sales from '@/pages/Sales';
 import NewSale from '@/pages/NewSale';
 import Invoices from '@/pages/Invoices';
 import ImportInvoice from '@/pages/ImportInvoice';
+import NFeImportAgent from '@/pages/NFeImportAgent';
 import Clients from '@/pages/Clients';
 import Suppliers from '@/pages/Suppliers';
 import Marketplaces from '@/pages/Marketplaces';
@@ -59,6 +60,7 @@ const AuthenticatedApp = () => {
         <Route path="/vendas/nova" element={<NewSale />} />
         <Route path="/notas-fiscais" element={<Invoices />} />
         <Route path="/notas-fiscais/importar" element={<ImportInvoice />} />
+        <Route path="/notas-fiscais/importar-ia" element={<NFeImportAgent />} />
         <Route path="/clientes" element={<Clients />} />
         <Route path="/fornecedores" element={<Suppliers />} />
         <Route path="/marketplaces" element={<Marketplaces />} />

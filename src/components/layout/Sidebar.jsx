@@ -14,6 +14,7 @@ const menuItems = [
   { icon: Warehouse, label: 'Estoque', path: '/estoque' },
   { icon: ShoppingCart, label: 'Vendas', path: '/vendas' },
   { icon: FileText, label: 'Notas Fiscais', path: '/notas-fiscais' },
+  { icon: Bot, label: 'Importar NF-e IA', path: '/notas-fiscais/importar-ia' },
   { icon: Users, label: 'Clientes', path: '/clientes' },
   { icon: Users, label: 'Fornecedores', path: '/fornecedores' },
   { icon: Store, label: 'Marketplaces', path: '/marketplaces' },
