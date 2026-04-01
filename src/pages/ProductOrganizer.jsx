@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Bot, Send, Loader2, Sparkles, RefreshCw,
+  Bot, Send, Loader2, Wand2, RefreshCw,
   Package, ArrowRight, Layers, Tag
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -90,7 +90,7 @@ export default function ProductOrganizer() {
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-primary" />
+            <Wand2 className="w-5 h-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-bold">Organizador de Catálogo</h1>
