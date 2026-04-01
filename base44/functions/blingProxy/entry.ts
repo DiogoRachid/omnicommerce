@@ -72,8 +72,16 @@ Deno.serve(async (req) => {
   const user = await base44.auth.me();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body = await req.json();
-  const { action, payload = {} } = body;
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  // O SDK do Base44 pode encapsular o payload em diferentes formatos
+  const action = body.action || body?.payload?.action;
+  const payload = body.payload || body?.payload?.payload || {};
 
   if (action === 'status') {
     const tokens = await base44.asServiceRole.entities.BlingToken.list();
