@@ -50,21 +50,35 @@ async function getValidAccessToken(base44) {
   return token.access_token;
 }
 
-async function blingRequest(accessToken, path, options = {}) {
-  const res = await fetch(`${BLING_API}${path}`, {
-    ...options,
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data?.error?.description || data?.error?.message || JSON.stringify(data));
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function blingRequest(accessToken, path, options = {}, retries = 3) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(`${BLING_API}${path}`, {
+      ...options,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+    const data = await res.json();
+    if (res.status === 429 || (data?.error?.type === 'TOO_MANY_REQUESTS') || 
+        (data?.error?.description || '').includes('limite')) {
+      // Rate limit: espera antes de tentar novamente
+      const wait = (attempt + 1) * 1500;
+      await sleep(wait);
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(data?.error?.description || data?.error?.message || JSON.stringify(data));
+    }
+    return data;
   }
-  return data;
+  throw new Error('Rate limit atingido após múltiplas tentativas.');
 }
 
 Deno.serve(async (req) => {
@@ -190,8 +204,9 @@ Deno.serve(async (req) => {
       pagina++;
     }
 
-    // 2. Busca detalhes em lotes paralelos de 10
-    const BATCH = 10;
+    // 2. Busca detalhes em lotes paralelos de 3 (respeita rate limit do Bling)
+    const BATCH = 3;
+    const DELAY = 600; // ms entre lotes
     const detalhes = [];
     for (let i = 0; i < allSummaries.length; i += BATCH) {
       const lote = allSummaries.slice(i, i + BATCH);
@@ -206,9 +221,10 @@ Deno.serve(async (req) => {
         })
       );
       detalhes.push(...results);
+      if (i + BATCH < allSummaries.length) await sleep(DELAY);
     }
 
-    // 3. Busca estoques em lotes paralelos de 10
+    // 3. Busca estoques em lotes paralelos de 3
     const estoqueMap = {};
     for (let i = 0; i < detalhes.length; i += BATCH) {
       const lote = detalhes.slice(i, i + BATCH);
@@ -234,6 +250,7 @@ Deno.serve(async (req) => {
           }
         })
       );
+      if (i + BATCH < detalhes.length) await sleep(DELAY);
     }
 
     // 4. Classifica e formata
