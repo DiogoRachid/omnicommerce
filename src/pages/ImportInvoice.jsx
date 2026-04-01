@@ -45,15 +45,18 @@ export default function ImportInvoice() {
 
       const result = await base44.functions.invoke('parseNFeXml', { xml_content: xmlContent });
 
-      if (result.data?.success) {
+      if (result.data?.success && result.data?.nf) {
         setParsedData({ ...result.data, xml_url: file_url });
+        toast.success('XML processado com sucesso! Revise os dados antes de confirmar.');
       } else {
         toast.error('Erro ao processar XML: ' + (result.data?.error || 'Formato inválido'));
       }
     } catch (err) {
+      console.error('Erro:', err);
       toast.error('Erro ao fazer upload: ' + err.message);
+    } finally {
+      setUploading(false);
     }
-    setUploading(false);
   };
 
   const openLinkDialog = (index) => {
