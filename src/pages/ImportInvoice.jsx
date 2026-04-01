@@ -43,7 +43,7 @@ export default function ImportInvoice() {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       const xmlContent = await (await fetch(file_url)).text();
 
-      const result = await base44.functions.invoke('parseNFeXml', { xml_content: xmlContent });
+      const result = await base44.functions.invoke('parseNFe', { xml_content: xmlContent });
       
       console.log('ParseNFeXml result:', result);
 
