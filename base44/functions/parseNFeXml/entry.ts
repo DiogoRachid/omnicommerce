@@ -130,7 +130,10 @@ Deno.serve(async (req) => {
         serie: serie,
         data_emissao: dhEmi,
         natureza_operacao: natOp,
-        tipo_documento: 'entrada'
+        tipo_documento: 'entrada',
+        modelo: '55',
+        chave_acesso: getNodeText(ide, 'cDV'),
+        items: items
       },
       fornecedor: {
         cnpj: emitCNPJ,
@@ -146,7 +149,6 @@ Deno.serve(async (req) => {
         nf: parseFloat(vNF || 0)
       },
       forma_pagamento,
-      itens: items,
       duplicatas: duplicatas
     });
   } catch (e) {
