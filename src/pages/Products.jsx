@@ -27,9 +27,9 @@ export default function Products() {
     queryKey: ['products', selectedCompany],
     queryFn: () => {
       if (selectedCompany && selectedCompany !== 'all') {
-        return base44.entities.Product.filter({ company_id: selectedCompany }, '-created_date', 500);
+        return base44.entities.Product.filter({ company_id: selectedCompany }, '-created_date', 10000);
       }
-      return base44.entities.Product.list('-created_date', 500);
+      return base44.entities.Product.list('-created_date', 10000);
     },
   });
 
