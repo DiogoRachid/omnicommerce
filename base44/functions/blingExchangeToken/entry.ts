@@ -8,12 +8,31 @@ Deno.serve(async (req) => {
   const user = await base44.auth.me();
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { code } = await req.json();
+  const body = await req.json();
+  const code = body.code;
+
   if (!code) return Response.json({ error: 'Código não informado.' }, { status: 400 });
 
   const clientId = Deno.env.get('VITE_BLING_CLIENT_ID');
   const clientSecret = Deno.env.get('VITE_BLING_CLIENT_SECRET');
   const credentials = btoa(`${clientId}:${clientSecret}`);
+
+  const requestBody = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: REDIRECT_URI,
+  });
+
+  // Log detalhado do que está sendo enviado ao Bling
+  console.log('=== BLING TOKEN REQUEST ===');
+  console.log('URL:', BLING_TOKEN_URL);
+  console.log('grant_type:', 'authorization_code');
+  console.log('code:', code);
+  console.log('redirect_uri:', REDIRECT_URI);
+  console.log('clientId (primeiros 8 chars):', clientId?.substring(0, 8));
+  console.log('clientSecret presente:', !!clientSecret);
+  console.log('Authorization header:', `Basic ${credentials.substring(0, 10)}...`);
+  console.log('Body string:', requestBody.toString());
 
   const res = await fetch(BLING_TOKEN_URL, {
     method: 'POST',
@@ -22,16 +41,34 @@ Deno.serve(async (req) => {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json',
     },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: REDIRECT_URI,
-    }).toString(),
+    body: requestBody.toString(),
   });
 
-  const data = await res.json();
+  const responseText = await res.text();
+  console.log('=== BLING TOKEN RESPONSE ===');
+  console.log('Status HTTP:', res.status);
+  console.log('Response body:', responseText);
+
+  let data;
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    data = { raw: responseText };
+  }
+
   if (!res.ok || !data.access_token) {
-    return Response.json({ error: data.error_description || data.error || JSON.stringify(data) }, { status: 400 });
+    return Response.json({
+      error: data.error_description || data.error || 'Erro desconhecido',
+      bling_status: res.status,
+      bling_response: data,
+      debug: {
+        redirect_uri_sent: REDIRECT_URI,
+        grant_type: 'authorization_code',
+        code_length: code?.length,
+        client_id_prefix: clientId?.substring(0, 8),
+        has_secret: !!clientSecret,
+      }
+    }, { status: 400 });
   }
 
   const tokenPayload = {
