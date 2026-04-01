@@ -17,6 +17,7 @@ import NewSale from '@/pages/NewSale';
 import Invoices from '@/pages/Invoices';
 import ImportInvoice from '@/pages/ImportInvoice';
 import Clients from '@/pages/Clients';
+import Suppliers from '@/pages/Suppliers';
 import Marketplaces from '@/pages/Marketplaces';
 import Reports from '@/pages/Reports';
 import IAPricing from '@/pages/IAPricing';
@@ -59,6 +60,7 @@ const AuthenticatedApp = () => {
         <Route path="/notas-fiscais" element={<Invoices />} />
         <Route path="/notas-fiscais/importar" element={<ImportInvoice />} />
         <Route path="/clientes" element={<Clients />} />
+        <Route path="/fornecedores" element={<Suppliers />} />
         <Route path="/marketplaces" element={<Marketplaces />} />
         <Route path="/relatorios" element={<Reports />} />
         <Route path="/ia-precos" element={<IAPricing />} />

@@ -15,6 +15,7 @@ const menuItems = [
   { icon: ShoppingCart, label: 'Vendas', path: '/vendas' },
   { icon: FileText, label: 'Notas Fiscais', path: '/notas-fiscais' },
   { icon: Users, label: 'Clientes', path: '/clientes' },
+  { icon: Users, label: 'Fornecedores', path: '/fornecedores' },
   { icon: Store, label: 'Marketplaces', path: '/marketplaces' },
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
   { icon: Bot, label: 'IA de Preços', path: '/ia-precos' },
