@@ -18,53 +18,51 @@ async function callProxy(action, payload = {}) {
   return res.data;
 }
 
-function buildFotos(p) {
-  const fotos = [];
-  if (p.imagemURL) fotos.push(p.imagemURL);
-  if (Array.isArray(p.imagens)) {
-    p.imagens.forEach(img => {
-      const url = img.link || img.url || img;
-      if (url && !fotos.includes(url)) fotos.push(url);
-    });
-  }
-  return fotos;
+function clean(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined && v !== null && v !== ''));
 }
 
-function buildDimensoes(p) {
+function buildBaseProduct(p, companyId) {
   const d = p.dimensoes || {};
-  return {
+  const fotos = Array.isArray(p.imagens) && p.imagens.length > 0 ? p.imagens : (p.imagemURL ? [p.imagemURL] : []);
+
+  // Monta atributos extras: do campo atributos_extras do backend + campos soltos
+  const atributos_extras = { ...(p.atributos_extras || {}) };
+
+  return clean({
+    // Identificação
+    bling_id: String(p.id),
+    sku: p.codigo || `BLING-${p.id}`,
+    ean: p.gtin || undefined,
+    nome: p.nome || '-',
+    descricao: p.descricaoCurta || p.descricaoComplementar || undefined,
+    marca: p.marca || undefined,
+    unidade_medida: p.unidade || 'UN',
+    // Status
+    ativo: p.situacao === 'A',
+    origem: 'importacao',
+    company_id: companyId || undefined,
+    // Preços
+    preco_venda: p.preco ? parseFloat(p.preco) : undefined,
+    preco_custo: p.precoCusto || p.precoCompra ? parseFloat(p.precoCusto || p.precoCompra) : undefined,
+    // Fiscal
+    ncm: p.tributacao?.ncm || undefined,
+    cest: p.tributacao?.cest || undefined,
+    // Dimensões
     altura_cm: d.altura ? parseFloat(d.altura) : undefined,
     largura_cm: d.largura ? parseFloat(d.largura) : undefined,
     comprimento_cm: d.profundidade ? parseFloat(d.profundidade) : undefined,
     peso_bruto_kg: d.pesoBruto ? parseFloat(d.pesoBruto) : undefined,
     peso_liquido_kg: d.pesoLiquido ? parseFloat(d.pesoLiquido) : undefined,
-  };
-}
-
-function buildBaseProduct(p, companyId) {
-  const dims = buildDimensoes(p);
-  const fotos = buildFotos(p);
-  const base = {
-    ativo: p.situacao === 'A',
-    origem: 'importacao',
-    company_id: companyId || undefined,
-    bling_id: String(p.id),
-    nome: p.nome || '-',
-    sku: p.codigo || `BLING-${p.id}`,
-    ean: p.gtin || undefined,
-    preco_venda: p.preco ? parseFloat(p.preco) : undefined,
-    preco_custo: p.precoCusto ? parseFloat(p.precoCusto) : undefined,
-    marca: p.marca || undefined,
-    descricao: p.descricaoCurta || undefined,
-    ncm: p.tributacao?.ncm || undefined,
-    unidade_medida: p.unidade || 'UN',
-    estoque_atual: 0,
-    estoque_minimo: 0,
+    // Estoque
+    estoque_atual: parseFloat(p.estoque?.saldoFisico || 0),
+    estoque_minimo: parseFloat(p.estoque?.minimo || 0),
+    estoque_maximo: p.estoque?.maximo ? parseFloat(p.estoque.maximo) : undefined,
+    // Fotos
     fotos: fotos.length > 0 ? fotos : undefined,
-    ...dims,
-  };
-  // Remove undefined keys
-  return Object.fromEntries(Object.entries(base).filter(([, v]) => v !== undefined));
+    // Atributos extras dinâmicos
+    atributos_extras: Object.keys(atributos_extras).length > 0 ? atributos_extras : undefined,
+  });
 }
 
 export default function BlingImportDialog({ company, open, onClose }) {
@@ -172,15 +170,21 @@ export default function BlingImportDialog({ company, open, onClose }) {
           try {
             const attrs = (v.atributos || []).map(a => `${a.nome}: ${a.valor}`).join(' | ');
             const nomeVariacao = `${p.nome}${attrs ? ` - ${attrs}` : ''}`;
-            const estoqueVar = v.estoque || 0;
-            const fotos = buildFotos(p); // herda fotos do pai
-            const dims = buildDimensoes(p); // herda dimensões do pai
+            const dv = v.dimensoes || p.dimensoes || {};
+            const fotosVar = (v.imagens && v.imagens.length > 0) ? v.imagens
+              : v.imagemURL ? [v.imagemURL]
+              : (Array.isArray(p.imagens) && p.imagens.length > 0 ? p.imagens : (p.imagemURL ? [p.imagemURL] : []));
 
-            const varRecord = {
+            // Atributos extras da variação (para filtros)
+            const atributosExtrasVar = {};
+            (v.atributos || []).forEach(a => { atributosExtrasVar[a.nome] = a.valor; });
+
+            const varRecord = clean({
               nome: nomeVariacao,
               sku: v.codigo || `VAR-${v.id}`,
               ean: v.gtin || undefined,
-              preco_venda: v.preco ? parseFloat(v.preco) : undefined,
+              preco_venda: v.preco ? parseFloat(v.preco) : (p.preco ? parseFloat(p.preco) : undefined),
+              preco_custo: v.precoCusto ? parseFloat(v.precoCusto) : (p.precoCusto ? parseFloat(p.precoCusto) : undefined),
               ativo: p.situacao === 'A',
               origem: 'importacao',
               company_id: company?.id || undefined,
@@ -189,14 +193,22 @@ export default function BlingImportDialog({ company, open, onClose }) {
               produto_pai_id: paiCriado.id,
               tipo: 'variacao',
               variacoes_atributos: attrs || undefined,
-              estoque_atual: estoqueVar,
-              estoque_minimo: 0,
-              fotos: fotos.length > 0 ? fotos : undefined,
-              ...dims,
-            };
-            await base44.entities.Product.create(
-              Object.fromEntries(Object.entries(varRecord).filter(([, val]) => val !== undefined))
-            );
+              estoque_atual: parseFloat(v.estoque || 0),
+              estoque_minimo: parseFloat(v.estoqueMinimo || 0),
+              fotos: fotosVar.length > 0 ? fotosVar : undefined,
+              // Dimensões da variação ou herda do pai
+              altura_cm: dv.altura ? parseFloat(dv.altura) : undefined,
+              largura_cm: dv.largura ? parseFloat(dv.largura) : undefined,
+              comprimento_cm: dv.profundidade ? parseFloat(dv.profundidade) : undefined,
+              peso_bruto_kg: dv.pesoBruto ? parseFloat(dv.pesoBruto) : undefined,
+              peso_liquido_kg: dv.pesoLiquido ? parseFloat(dv.pesoLiquido) : undefined,
+              // Fiscal
+              ncm: v.tributacao?.ncm || p.tributacao?.ncm || undefined,
+              cest: v.tributacao?.cest || p.tributacao?.cest || undefined,
+              // Atributos extras para filtros dinâmicos
+              atributos_extras: Object.keys(atributosExtrasVar).length > 0 ? atributosExtrasVar : undefined,
+            });
+            await base44.entities.Product.create(varRecord);
             created++;
           } catch { errors++; }
         }

@@ -179,55 +179,163 @@ Deno.serve(async (req) => {
   if (action === 'listProductsFull') {
     const accessToken = await getValidAccessToken(base44);
 
-    // 1. Busca todos os produtos paginado
-    let allProducts = [];
+    // 1. Busca todos os IDs com paginação
+    let allSummaries = [];
     let pagina = 1;
     while (true) {
       const data = await blingRequest(accessToken, `/produtos?pagina=${pagina}&limite=100&criterio=5&tipo=T`);
       const items = data?.data || [];
-      allProducts = allProducts.concat(items);
+      allSummaries = allSummaries.concat(items);
       if (items.length < 100) break;
       pagina++;
     }
 
+    // 2. Busca detalhes em lotes paralelos de 10
+    const BATCH = 10;
+    const detalhes = [];
+    for (let i = 0; i < allSummaries.length; i += BATCH) {
+      const lote = allSummaries.slice(i, i + BATCH);
+      const results = await Promise.all(
+        lote.map(async (p) => {
+          try {
+            const det = await blingRequest(accessToken, `/produtos/${p.id}`);
+            return det?.data || p;
+          } catch {
+            return p;
+          }
+        })
+      );
+      detalhes.push(...results);
+    }
+
+    // 3. Busca estoques em lotes paralelos de 10
+    const estoqueMap = {};
+    for (let i = 0; i < detalhes.length; i += BATCH) {
+      const lote = detalhes.slice(i, i + BATCH);
+      await Promise.all(
+        lote.map(async (p) => {
+          try {
+            const estoqueData = await blingRequest(accessToken, `/estoques?idProduto=${p.id}`);
+            const itens = estoqueData?.data || [];
+            const saldo = itens.reduce((acc, item) => acc + (parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0)), 0);
+            estoqueMap[p.id] = saldo;
+            // Para variações, buscar estoque individual
+            if (p.variacoes && p.variacoes.length > 0) {
+              for (const v of p.variacoes) {
+                try {
+                  const ve = await blingRequest(accessToken, `/estoques?idProduto=${v.id}`);
+                  const vi = ve?.data || [];
+                  estoqueMap[v.id] = vi.reduce((acc, item) => acc + (parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0)), 0);
+                } catch { estoqueMap[v.id] = v.estoque?.saldoFisico || 0; }
+              }
+            }
+          } catch {
+            estoqueMap[p.id] = p.estoque?.saldoFisico || p.estoque?.saldoFisicoTotal || 0;
+          }
+        })
+      );
+    }
+
+    // 4. Classifica e formata
     const produtos_simples = [];
     const produtos_pai = [];
 
-    for (const p of allProducts) {
-      // Se tem variacoes no resumo (pode ser campo vazio ou ausente na listagem)
-      // Precisamos buscar o detalhe para saber se tem variações
-      // A listagem retorna variacoes apenas no detalhe individual
-      // Estratégia: buscar detalhe de todos, mas em paralelo em lotes
-      let detalhe = null;
-      try {
-        const det = await blingRequest(accessToken, `/produtos/${p.id}`);
-        detalhe = det?.data || p;
-      } catch {
-        detalhe = p;
+    for (const p of detalhes) {
+      // Coleta todas as imagens
+      const imagens = [];
+      if (p.imagemURL) imagens.push(p.imagemURL);
+      if (Array.isArray(p.imagens)) {
+        p.imagens.forEach(img => {
+          const url = img.link || img.url || img;
+          if (url && !imagens.includes(url)) imagens.push(url);
+        });
       }
 
-      const variacoes = detalhe?.variacoes || [];
+      // Monta atributos extras (campos soltos do produto)
+      const atributos_extras = {};
+      if (p.cor) atributos_extras['Cor'] = p.cor;
+      if (p.tamanho) atributos_extras['Tamanho'] = p.tamanho;
+      if (p.voltagem) atributos_extras['Voltagem'] = p.voltagem;
+      if (p.material) atributos_extras['Material'] = p.material;
+
+      // Campos completos do produto
+      const produtoCompleto = {
+        // Identificação
+        id: p.id,
+        nome: p.nome,
+        codigo: p.codigo,
+        gtin: p.gtin,
+        situacao: p.situacao,
+        // Preços
+        preco: p.preco,
+        precoCusto: p.precoCusto,
+        precoCompra: p.precoCompra,
+        // Descrições
+        descricaoCurta: p.descricaoCurta,
+        descricaoComplementar: p.descricaoComplementar,
+        // Identificação fiscal
+        tributacao: p.tributacao || {},
+        // Dimensões
+        dimensoes: p.dimensoes || {},
+        // Estoque
+        estoque: {
+          saldoFisico: estoqueMap[p.id] ?? (p.estoque?.saldoFisico || 0),
+          saldoVirtual: p.estoque?.saldoVirtual || 0,
+          minimo: p.estoque?.minimo || 0,
+          maximo: p.estoque?.maximo || 0,
+          crossdocking: p.estoque?.crossdocking || 0,
+        },
+        // Outros
+        marca: p.marca,
+        unidade: p.unidade,
+        tipo: p.tipo,
+        imagemURL: p.imagemURL,
+        imagens: imagens,
+        categoria: p.categoria || {},
+        fornecedores: p.fornecedores || [],
+        componentes: p.componentes || [],
+        estrutura: p.estrutura || {},
+        atributos_extras,
+      };
+
+      const variacoes = p.variacoes || [];
       if (variacoes.length > 0) {
-        // Produto pai com variações
-        const variacoesFormatadas = variacoes.map(v => ({
-          id: v.id,
-          nome: v.nome,
-          codigo: v.codigo,
-          preco: v.preco,
-          gtin: v.gtin,
-          estoque: v.estoque?.saldoFisico || 0,
-          atributos: v.variacao ? [{ nome: v.variacao.nome, valor: v.variacao.valor }] : [],
-        }));
-        produtos_pai.push({ ...detalhe, variacoes: variacoesFormatadas });
+        const variacoesFormatadas = variacoes.map(v => {
+          const vImagens = [];
+          if (v.imagemURL) vImagens.push(v.imagemURL);
+          // Atributos da variação (pode ser array ou objeto único)
+          let atributos = [];
+          if (v.variacao) {
+            atributos = [{ nome: v.variacao.nome, valor: v.variacao.valor }];
+          } else if (Array.isArray(v.variacoes)) {
+            atributos = v.variacoes.map(a => ({ nome: a.nome, valor: a.valor }));
+          }
+          return {
+            id: v.id,
+            nome: v.nome,
+            codigo: v.codigo,
+            preco: v.preco,
+            precoCusto: v.precoCusto,
+            gtin: v.gtin,
+            estoque: estoqueMap[v.id] ?? (v.estoque?.saldoFisico || 0),
+            estoqueMinimo: v.estoque?.minimo || 0,
+            atributos,
+            imagemURL: v.imagemURL || p.imagemURL,
+            imagens: vImagens.length > 0 ? vImagens : imagens,
+            dimensoes: v.dimensoes || p.dimensoes || {},
+            tributacao: v.tributacao || p.tributacao || {},
+          };
+        });
+        produtos_pai.push({ ...produtoCompleto, variacoes: variacoesFormatadas });
       } else {
-        produtos_simples.push(detalhe);
+        produtos_simples.push(produtoCompleto);
       }
     }
 
     return Response.json({
       produtos_simples,
       produtos_pai,
-      total: allProducts.length,
+      total: allSummaries.length,
     });
   }
 
@@ -237,7 +345,7 @@ Deno.serve(async (req) => {
     if (!bling_id) return Response.json({ saldo: 0 });
     const data = await blingRequest(accessToken, `/estoques?idProduto=${bling_id}`);
     const itens = data?.data || [];
-    const saldo = itens.reduce((acc, item) => acc + (item.saldoFisico || item.saldoFisicoTotal || 0), 0);
+    const saldo = itens.reduce((acc, item) => acc + (parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0)), 0);
     return Response.json({ saldo });
   }
 
