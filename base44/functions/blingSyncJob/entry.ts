@@ -167,9 +167,9 @@ async function syncDelta(base44, accessToken, companyId, logId) {
     }));
   }
 
-  // 2. Vendas recentes (100 apenas)
+  // 2. Vendas recentes (30 apenas — mais leve)
   try {
-    const data = await blingGet(accessToken, `/pedidos/vendas?pagina=1&limite=100`);
+    const data = await blingGet(accessToken, `/pedidos/vendas?pagina=1&limite=30`);
     const allOrders = data?.data || [];
     for (const order of allOrders) {
       try {
