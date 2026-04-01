@@ -215,8 +215,12 @@ export default function ImportInvoice() {
       navigate('/notas-fiscais');
     },
     onError: (error) => {
-      console.error('Erro na importação:', error);
-      toast.error('Erro ao importar: ' + error.message);
+      if (error.message === 'Selecione uma empresa antes de importar') {
+        toast.error('Selecione uma empresa no menu superior antes de importar');
+      } else {
+        console.error('Erro na importação:', error);
+        toast.error('Erro ao importar: ' + error.message);
+      }
     },
     });
 
