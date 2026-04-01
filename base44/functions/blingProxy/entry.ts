@@ -192,24 +192,30 @@ Deno.serve(async (req) => {
 
   if (action === 'listProductsFull') {
     const accessToken = await getValidAccessToken(base44);
+    const DELAY = 400;
 
-    // 1. Busca todos os IDs com paginação
-    let allSummaries = [];
+    // 1. Busca todos os produtos com paginação (listagem já traz campos básicos + variacoes resumidas)
+    let allProducts = [];
     let pagina = 1;
     while (true) {
       const data = await blingRequest(accessToken, `/produtos?pagina=${pagina}&limite=100&criterio=5&tipo=T`);
       const items = data?.data || [];
-      allSummaries = allSummaries.concat(items);
+      allProducts = allProducts.concat(items);
       if (items.length < 100) break;
       pagina++;
+      await sleep(DELAY);
     }
 
-    // 2. Busca detalhes em lotes paralelos de 3 (respeita rate limit do Bling)
+    // 2. Para produtos com variações, buscar detalhe individual (necessário para obter lista de variações)
+    //    Para produtos simples, usar dados da listagem diretamente
+    const produtosComVariacao = allProducts.filter(p => p.tipo === 'V' || p.variacoes?.length > 0);
+    const produtosSimplesBrutos = allProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
+
+    // Busca detalhes apenas dos produtos pai (com variações) - lotes de 3
     const BATCH = 3;
-    const DELAY = 600; // ms entre lotes
-    const detalhes = [];
-    for (let i = 0; i < allSummaries.length; i += BATCH) {
-      const lote = allSummaries.slice(i, i + BATCH);
+    const detalhesPai = [];
+    for (let i = 0; i < produtosComVariacao.length; i += BATCH) {
+      const lote = produtosComVariacao.slice(i, i + BATCH);
       const results = await Promise.all(
         lote.map(async (p) => {
           try {
@@ -220,139 +226,106 @@ Deno.serve(async (req) => {
           }
         })
       );
-      detalhes.push(...results);
-      if (i + BATCH < allSummaries.length) await sleep(DELAY);
+      detalhesPai.push(...results);
+      if (i + BATCH < produtosComVariacao.length) await sleep(DELAY);
     }
 
-    // 3. Busca estoques em lotes paralelos de 3
+    // 3. Busca estoques dos produtos simples em lotes de 3
     const estoqueMap = {};
-    for (let i = 0; i < detalhes.length; i += BATCH) {
-      const lote = detalhes.slice(i, i + BATCH);
+    for (let i = 0; i < produtosSimplesBrutos.length; i += BATCH) {
+      const lote = produtosSimplesBrutos.slice(i, i + BATCH);
       await Promise.all(
         lote.map(async (p) => {
           try {
             const estoqueData = await blingRequest(accessToken, `/estoques?idProduto=${p.id}`);
             const itens = estoqueData?.data || [];
-            const saldo = itens.reduce((acc, item) => acc + (parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0)), 0);
-            estoqueMap[p.id] = saldo;
-            // Para variações, buscar estoque individual
-            if (p.variacoes && p.variacoes.length > 0) {
-              for (const v of p.variacoes) {
-                try {
-                  const ve = await blingRequest(accessToken, `/estoques?idProduto=${v.id}`);
-                  const vi = ve?.data || [];
-                  estoqueMap[v.id] = vi.reduce((acc, item) => acc + (parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0)), 0);
-                } catch { estoqueMap[v.id] = v.estoque?.saldoFisico || 0; }
-              }
-            }
+            estoqueMap[p.id] = itens.reduce((acc, item) => acc + parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0), 0);
           } catch {
-            estoqueMap[p.id] = p.estoque?.saldoFisico || p.estoque?.saldoFisicoTotal || 0;
+            estoqueMap[p.id] = p.estoque?.saldoFisico || 0;
           }
         })
       );
-      if (i + BATCH < detalhes.length) await sleep(DELAY);
+      if (i + BATCH < produtosSimplesBrutos.length) await sleep(DELAY);
     }
 
-    // 4. Classifica e formata
-    const produtos_simples = [];
-    const produtos_pai = [];
+    // 4. Busca estoques das variações em lotes de 3
+    for (const pai of detalhesPai) {
+      const vars = pai.variacoes || [];
+      for (let i = 0; i < vars.length; i += BATCH) {
+        const lote = vars.slice(i, i + BATCH);
+        await Promise.all(
+          lote.map(async (v) => {
+            try {
+              const ve = await blingRequest(accessToken, `/estoques?idProduto=${v.id}`);
+              const vi = ve?.data || [];
+              estoqueMap[v.id] = vi.reduce((acc, item) => acc + parseFloat(item.saldoFisico || item.saldoFisicoTotal || 0), 0);
+            } catch {
+              estoqueMap[v.id] = v.estoque?.saldoFisico || 0;
+            }
+          })
+        );
+        if (i + BATCH < vars.length) await sleep(DELAY);
+      }
+    }
 
-    for (const p of detalhes) {
-      // Coleta todas as imagens
+    // 5. Formata produtos simples
+    const produtos_simples = produtosSimplesBrutos.map(p => {
+      const imagens = [];
+      if (p.imagemURL) imagens.push(p.imagemURL);
+      return {
+        id: p.id, nome: p.nome, codigo: p.codigo, gtin: p.gtin, situacao: p.situacao,
+        preco: p.preco, precoCusto: p.precoCusto,
+        descricaoCurta: p.descricaoCurta,
+        tributacao: p.tributacao || {},
+        dimensoes: p.dimensoes || {},
+        estoque: { saldoFisico: estoqueMap[p.id] ?? 0, minimo: p.estoque?.minimo || 0, maximo: p.estoque?.maximo || 0 },
+        marca: p.marca, unidade: p.unidade,
+        imagemURL: p.imagemURL, imagens,
+        atributos_extras: {},
+      };
+    });
+
+    // 6. Formata produtos pai com variações
+    const produtos_pai = detalhesPai.map(p => {
       const imagens = [];
       if (p.imagemURL) imagens.push(p.imagemURL);
       if (Array.isArray(p.imagens)) {
-        p.imagens.forEach(img => {
-          const url = img.link || img.url || img;
-          if (url && !imagens.includes(url)) imagens.push(url);
-        });
+        p.imagens.forEach(img => { const url = img.link || img.url || img; if (url && !imagens.includes(url)) imagens.push(url); });
       }
 
-      // Monta atributos extras (campos soltos do produto)
-      const atributos_extras = {};
-      if (p.cor) atributos_extras['Cor'] = p.cor;
-      if (p.tamanho) atributos_extras['Tamanho'] = p.tamanho;
-      if (p.voltagem) atributos_extras['Voltagem'] = p.voltagem;
-      if (p.material) atributos_extras['Material'] = p.material;
+      const variacoes = (p.variacoes || []).map(v => {
+        let atributos = [];
+        if (v.variacao) atributos = [{ nome: v.variacao.nome, valor: v.variacao.valor }];
+        else if (Array.isArray(v.variacoes)) atributos = v.variacoes.map(a => ({ nome: a.nome, valor: a.valor }));
+        return {
+          id: v.id, nome: v.nome, codigo: v.codigo, preco: v.preco, precoCusto: v.precoCusto,
+          gtin: v.gtin, estoque: estoqueMap[v.id] ?? 0, estoqueMinimo: v.estoque?.minimo || 0,
+          atributos,
+          imagemURL: v.imagemURL || p.imagemURL,
+          imagens: v.imagemURL ? [v.imagemURL] : imagens,
+          dimensoes: v.dimensoes || p.dimensoes || {},
+          tributacao: v.tributacao || p.tributacao || {},
+        };
+      });
 
-      // Campos completos do produto
-      const produtoCompleto = {
-        // Identificação
-        id: p.id,
-        nome: p.nome,
-        codigo: p.codigo,
-        gtin: p.gtin,
-        situacao: p.situacao,
-        // Preços
-        preco: p.preco,
-        precoCusto: p.precoCusto,
-        precoCompra: p.precoCompra,
-        // Descrições
+      return {
+        id: p.id, nome: p.nome, codigo: p.codigo, gtin: p.gtin, situacao: p.situacao,
+        preco: p.preco, precoCusto: p.precoCusto,
         descricaoCurta: p.descricaoCurta,
-        descricaoComplementar: p.descricaoComplementar,
-        // Identificação fiscal
         tributacao: p.tributacao || {},
-        // Dimensões
         dimensoes: p.dimensoes || {},
-        // Estoque
-        estoque: {
-          saldoFisico: estoqueMap[p.id] ?? (p.estoque?.saldoFisico || 0),
-          saldoVirtual: p.estoque?.saldoVirtual || 0,
-          minimo: p.estoque?.minimo || 0,
-          maximo: p.estoque?.maximo || 0,
-          crossdocking: p.estoque?.crossdocking || 0,
-        },
-        // Outros
-        marca: p.marca,
-        unidade: p.unidade,
-        tipo: p.tipo,
-        imagemURL: p.imagemURL,
-        imagens: imagens,
-        categoria: p.categoria || {},
-        fornecedores: p.fornecedores || [],
-        componentes: p.componentes || [],
-        estrutura: p.estrutura || {},
-        atributos_extras,
+        estoque: { saldoFisico: 0, minimo: 0, maximo: 0 },
+        marca: p.marca, unidade: p.unidade,
+        imagemURL: p.imagemURL, imagens,
+        atributos_extras: {},
+        variacoes,
       };
-
-      const variacoes = p.variacoes || [];
-      if (variacoes.length > 0) {
-        const variacoesFormatadas = variacoes.map(v => {
-          const vImagens = [];
-          if (v.imagemURL) vImagens.push(v.imagemURL);
-          // Atributos da variação (pode ser array ou objeto único)
-          let atributos = [];
-          if (v.variacao) {
-            atributos = [{ nome: v.variacao.nome, valor: v.variacao.valor }];
-          } else if (Array.isArray(v.variacoes)) {
-            atributos = v.variacoes.map(a => ({ nome: a.nome, valor: a.valor }));
-          }
-          return {
-            id: v.id,
-            nome: v.nome,
-            codigo: v.codigo,
-            preco: v.preco,
-            precoCusto: v.precoCusto,
-            gtin: v.gtin,
-            estoque: estoqueMap[v.id] ?? (v.estoque?.saldoFisico || 0),
-            estoqueMinimo: v.estoque?.minimo || 0,
-            atributos,
-            imagemURL: v.imagemURL || p.imagemURL,
-            imagens: vImagens.length > 0 ? vImagens : imagens,
-            dimensoes: v.dimensoes || p.dimensoes || {},
-            tributacao: v.tributacao || p.tributacao || {},
-          };
-        });
-        produtos_pai.push({ ...produtoCompleto, variacoes: variacoesFormatadas });
-      } else {
-        produtos_simples.push(produtoCompleto);
-      }
-    }
+    });
 
     return Response.json({
       produtos_simples,
       produtos_pai,
-      total: allSummaries.length,
+      total: allProducts.length,
     });
   }
 
