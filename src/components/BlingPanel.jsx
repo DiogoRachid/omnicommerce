@@ -12,7 +12,7 @@ import {
   Loader2, RefreshCw, Package, ShoppingCart, Plus,
 } from 'lucide-react';
 
-const CLIENT_ID = import.meta.env.VITE_BLING_CLIENT_ID;
+const CLIENT_ID = 'SEU_CLIENT_ID_AQUI';
 const AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
 
 function getBlingAuthUrl() {
