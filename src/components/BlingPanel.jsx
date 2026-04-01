@@ -16,12 +16,13 @@ import {
 const BLING_CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
 const BLING_AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
 
+const BLING_REDIRECT_URI = 'https://app.base44.com/api/apps/69c847515e26f8ca005176ef/auth/sso/callback';
+
 function getBlingAuthUrl() {
-  const redirectUri = `${window.location.origin}${window.location.pathname}`;
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: BLING_CLIENT_ID,
-    redirect_uri: redirectUri,
+    redirect_uri: BLING_REDIRECT_URI,
     state: 'bling_oauth',
   });
   return `${BLING_AUTH_URL}?${params.toString()}`;
@@ -69,8 +70,7 @@ export default function BlingPanel() {
     setLoading(true);
     setMsg('Conectando ao Bling...');
     setMsgType('info');
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
-    await callProxy('exchange', { code, redirect_uri: redirectUri });
+    await callProxy('exchange', { code, redirect_uri: BLING_REDIRECT_URI });
     setMsg('Bling conectado com sucesso!');
     setMsgType('success');
     await checkStatus();
