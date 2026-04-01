@@ -19,7 +19,6 @@ const menuItems = [
   { icon: BarChart3, label: 'Relatórios', path: '/relatorios' },
   { icon: Bot, label: 'IA de Preços', path: '/ia-precos' },
   { icon: Wand2, label: 'Organizar Catálogo', path: '/organizar-produtos' },
-  { icon: RefreshCw, label: 'Sync Bling', path: '/sync-bling' },
   { icon: Store, label: 'Financeiro', path: '/financeiro' },
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
 ];

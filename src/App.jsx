@@ -23,7 +23,6 @@ import IAPricing from '@/pages/IAPricing';
 import Settings from '@/pages/Settings';
 import BlingCallback from '@/pages/BlingCallback';
 import ProductOrganizer from '@/pages/ProductOrganizer';
-import SyncStatus from '@/pages/SyncStatus';
 import FinancialDashboard from '@/pages/FinancialDashboard';
 
 const AuthenticatedApp = () => {
@@ -65,7 +64,6 @@ const AuthenticatedApp = () => {
         <Route path="/ia-precos" element={<IAPricing />} />
         <Route path="/configuracoes" element={<Settings />} />
         <Route path="/organizar-produtos" element={<ProductOrganizer />} />
-        <Route path="/sync-bling" element={<SyncStatus />} />
         <Route path="/financeiro" element={<FinancialDashboard />} />
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
