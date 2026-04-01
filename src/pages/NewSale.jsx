@@ -76,6 +76,7 @@ export default function NewSale() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const companyId = selectedCompany !== 'all' ? selectedCompany : undefined;
       const sale = await base44.entities.Sale.create({
         canal: form.canal,
         client_name: form.client_name || 'Venda avulsa',
@@ -86,7 +87,7 @@ export default function NewSale() {
         total,
         status: 'confirmada',
         items,
-        company_id: selectedCompany !== 'all' ? selectedCompany : undefined,
+        company_id: companyId,
       });
 
       for (const item of items) {
@@ -102,15 +103,30 @@ export default function NewSale() {
             custo_unitario: item.preco_unitario,
             referencia_tipo: 'venda',
             referencia_id: sale.id,
-            company_id: selectedCompany !== 'all' ? selectedCompany : undefined,
+            company_id: companyId,
           });
         }
       }
+
+      // Cria Conta a Receber automaticamente
+      await base44.entities.FinancialAccount.create({
+        tipo: 'receber',
+        descricao: `Venda #${sale.id} - ${form.client_name || 'Venda avulsa'}`,
+        valor: total,
+        status: form.forma_pagamento === 'marketplace' ? 'pago' : 'pendente',
+        data_vencimento: new Date().toISOString().split('T')[0],
+        centro_custo: form.canal,
+        forma_pagamento: form.forma_pagamento,
+        cliente_nome: form.client_name || 'Venda avulsa',
+        sale_id: sale.id,
+        company_id: companyId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
       navigate('/vendas');
     },
   });

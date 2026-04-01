@@ -1,0 +1,115 @@
+{
+  "name": "FinancialAccount",
+  "type": "object",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "pagar",
+        "receber"
+      ],
+      "description": "Tipo de conta (a pagar ou a receber)"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o da transa\u00e7\u00e3o/nota fiscal"
+    },
+    "valor": {
+      "type": "number",
+      "description": "Valor da transa\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pendente",
+        "pago",
+        "cancelado",
+        "atrasado"
+      ],
+      "default": "pendente",
+      "description": "Status do pagamento"
+    },
+    "data_vencimento": {
+      "type": "string",
+      "format": "date",
+      "description": "Data de vencimento"
+    },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date",
+      "description": "Data em que foi pago"
+    },
+    "centro_custo": {
+      "type": "string",
+      "enum": [
+        "loja_fisica",
+        "mercado_livre",
+        "shopee",
+        "amazon",
+        "magalu",
+        "americanas",
+        "outro"
+      ],
+      "description": "Centro de custo (ponto de venda)"
+    },
+    "forma_pagamento": {
+      "type": "string",
+      "enum": [
+        "dinheiro",
+        "pix",
+        "cartao_credito",
+        "cartao_debito",
+        "boleto",
+        "transferencia",
+        "marketplace"
+      ],
+      "description": "Forma de pagamento"
+    },
+    "fornecedor_id": {
+      "type": "string",
+      "description": "ID do fornecedor (para contas a pagar)"
+    },
+    "fornecedor_nome": {
+      "type": "string",
+      "description": "Nome do fornecedor (desnormalizado)"
+    },
+    "cliente_id": {
+      "type": "string",
+      "description": "ID do cliente (para contas a receber)"
+    },
+    "cliente_nome": {
+      "type": "string",
+      "description": "Nome do cliente (desnormalizado)"
+    },
+    "sale_id": {
+      "type": "string",
+      "description": "ID da venda vinculada (para contas a receber)"
+    },
+    "invoice_id": {
+      "type": "string",
+      "description": "ID da nota fiscal vinculada (para contas a pagar)"
+    },
+    "instituicao_financeira_id": {
+      "type": "string",
+      "description": "ID da institui\u00e7\u00e3o financeira"
+    },
+    "numero_documento": {
+      "type": "string",
+      "description": "N\u00famero da NF, recibo ou documento"
+    },
+    "observacao": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es adicionais"
+    },
+    "company_id": {
+      "type": "string",
+      "description": "ID da empresa"
+    }
+  },
+  "required": [
+    "tipo",
+    "valor",
+    "data_vencimento",
+    "centro_custo"
+  ]
+}

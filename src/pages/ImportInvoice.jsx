@@ -128,56 +128,77 @@ export default function ImportInvoice() {
       });
 
       for (let idx = 0; idx < (parsedData.items || []).length; idx++) {
-        const item = parsedData.items[idx];
-        const linkedProductId = itemMappings[idx];
+         const item = parsedData.items[idx];
+         const linkedProductId = itemMappings[idx];
 
-        if (linkedProductId) {
-          const product = products.find(p => p.id === linkedProductId);
-          if (product) {
-            const newStock = (product.estoque_atual || 0) + (item.quantidade || 0);
-            await base44.entities.Product.update(product.id, { estoque_atual: newStock });
-            await base44.entities.StockMovement.create({
-              product_id: product.id,
-              product_name: product.nome,
-              tipo: 'entrada',
-              quantidade: item.quantidade || 0,
-              custo_unitario: item.valor_unitario || 0,
-              referencia_tipo: 'nfe_entrada',
-              referencia_id: invoice.id,
-              invoice_number: parsedData.numero_nf,
-              company_id: companyId,
-            });
-          }
-        } else {
-          const sku = `NF${parsedData.numero_nf || 'X'}-${idx + 1}`;
-          const newProduct = await base44.entities.Product.create({
-            sku,
-            ean: item.produto_ean || '',
-            nome: item.produto_nome || `Produto NF ${idx + 1}`,
-            ncm: item.ncm || '',
-            unidade_medida: item.unidade || 'UN',
-            preco_custo: item.valor_unitario || 0,
-            estoque_atual: item.quantidade || 0,
-            estoque_minimo: 0,
-            origem: 'xml_nfe',
-            ativo: true,
-            company_id: companyId,
-          });
-          await base44.entities.StockMovement.create({
-            product_id: newProduct.id,
-            product_name: newProduct.nome,
-            tipo: 'entrada',
-            quantidade: item.quantidade || 0,
-            custo_unitario: item.valor_unitario || 0,
-            referencia_tipo: 'nfe_entrada',
-            referencia_id: invoice.id,
-            invoice_number: parsedData.numero_nf,
-            company_id: companyId,
-          });
-        }
-      }
+         if (linkedProductId) {
+           const product = products.find(p => p.id === linkedProductId);
+           if (product) {
+             const newStock = (product.estoque_atual || 0) + (item.quantidade || 0);
+             await base44.entities.Product.update(product.id, { estoque_atual: newStock });
+             await base44.entities.StockMovement.create({
+               product_id: product.id,
+               product_name: product.nome,
+               tipo: 'entrada',
+               quantidade: item.quantidade || 0,
+               custo_unitario: item.valor_unitario || 0,
+               referencia_tipo: 'nfe_entrada',
+               referencia_id: invoice.id,
+               invoice_number: parsedData.numero_nf,
+               company_id: companyId,
+             });
+           }
+         } else {
+           const sku = `NF${parsedData.numero_nf || 'X'}-${idx + 1}`;
+           const newProduct = await base44.entities.Product.create({
+             sku,
+             ean: item.produto_ean || '',
+             nome: item.produto_nome || `Produto NF ${idx + 1}`,
+             ncm: item.ncm || '',
+             unidade_medida: item.unidade || 'UN',
+             preco_custo: item.valor_unitario || 0,
+             estoque_atual: item.quantidade || 0,
+             estoque_minimo: 0,
+             origem: 'xml_nfe',
+             ativo: true,
+             company_id: companyId,
+           });
+           await base44.entities.StockMovement.create({
+             product_id: newProduct.id,
+             product_name: newProduct.nome,
+             tipo: 'entrada',
+             quantidade: item.quantidade || 0,
+             custo_unitario: item.valor_unitario || 0,
+             referencia_tipo: 'nfe_entrada',
+             referencia_id: invoice.id,
+             invoice_number: parsedData.numero_nf,
+             company_id: companyId,
+           });
+         }
+       }
 
-      return invoice;
+       // Cria Conta a Pagar se houver duplicatas
+       if (parsedData.duplicatas && parsedData.duplicatas.length > 0) {
+         for (const dup of parsedData.duplicatas) {
+           await base44.entities.FinancialAccount.create({
+             tipo: 'pagar',
+             descricao: `NF ${parsedData.numero_nf} - ${parsedData.emitente_nome}`,
+             valor: dup.valor,
+             status: 'pendente',
+             data_vencimento: dup.vencimento,
+             centro_custo: 'outro',
+             forma_pagamento: parsedData.forma_pagamento || 'outro',
+             fornecedor_id: fornecedor?.id,
+             fornecedor_nome: parsedData.emitente_nome,
+             invoice_id: invoice.id,
+             numero_documento: `${parsedData.numero_nf}-${dup.numero}`,
+             company_id: companyId,
+           });
+           contasCreated++;
+         }
+       }
+
+       return invoice;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
