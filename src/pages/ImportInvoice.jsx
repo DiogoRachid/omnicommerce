@@ -80,7 +80,7 @@ export default function ImportInvoice() {
       let supplier = null;
       if (parsedData.fornecedor?.cnpj && parsedData.fornecedor?.nome) {
         try {
-          const existing = await base44.entities.Client.filter({
+          const existing = await base44.entities.Supplier.filter({
             cpf_cnpj: parsedData.fornecedor.cnpj,
             company_id: companyId,
           }, '-created_date', 1);
@@ -88,7 +88,7 @@ export default function ImportInvoice() {
           if (existing && existing.length > 0) {
             supplier = existing[0];
           } else {
-            supplier = await base44.entities.Client.create({
+            supplier = await base44.entities.Supplier.create({
               nome: parsedData.fornecedor.nome,
               tipo_pessoa: 'juridica',
               cpf_cnpj: parsedData.fornecedor.cnpj,
@@ -202,7 +202,7 @@ export default function ImportInvoice() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       queryClient.invalidateQueries({ queryKey: ['financial-accounts'] });
       toast.success('Nota fiscal importada com sucesso!');
       navigate('/notas-fiscais');

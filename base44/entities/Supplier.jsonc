@@ -1,0 +1,65 @@
+{
+  "name": "Supplier",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome do fornecedor"
+    },
+    "tipo_pessoa": {
+      "type": "string",
+      "enum": [
+        "fisica",
+        "juridica"
+      ],
+      "default": "juridica",
+      "description": "Tipo de pessoa"
+    },
+    "cpf_cnpj": {
+      "type": "string",
+      "description": "CPF ou CNPJ"
+    },
+    "inscricao_estadual": {
+      "type": "string",
+      "description": "Inscri\u00e7\u00e3o estadual"
+    },
+    "email": {
+      "type": "string"
+    },
+    "telefone": {
+      "type": "string"
+    },
+    "endereco": {
+      "type": "object",
+      "properties": {
+        "logradouro": {
+          "type": "string"
+        },
+        "numero": {
+          "type": "string"
+        },
+        "complemento": {
+          "type": "string"
+        },
+        "bairro": {
+          "type": "string"
+        },
+        "cidade": {
+          "type": "string"
+        },
+        "uf": {
+          "type": "string"
+        },
+        "cep": {
+          "type": "string"
+        }
+      }
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "nome"
+  ]
+}
