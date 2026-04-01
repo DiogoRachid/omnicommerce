@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,29 +6,15 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CheckCircle2, AlertCircle, ExternalLink, LogOut, Loader2, RefreshCw, Package, ShoppingCart, Plus } from 'lucide-react';
 import {
-  CheckCircle2, AlertCircle, ExternalLink, LogOut,
-  Loader2, RefreshCw, Package, ShoppingCart, Plus,
-} from 'lucide-react';
-
-const CLIENT_ID = '69c847515e26f8ca005176ef';
-const AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
-
-function getBlingAuthUrl() {
-  const redirectUri = `${window.location.origin}${window.location.pathname}`;
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLIENT_ID,
-    redirect_uri: redirectUri,
-    state: 'bling_oauth',
-  });
-  return `${AUTH_URL}?${params.toString()}`;
-}
-
-async function callProxy(action, payload = {}) {
-  const res = await base44.functions.invoke('blingProxy', { action, payload });
-  return res.data;
-}
+  getBlingAuthUrl,
+  exchangeCodeForToken,
+  disconnectBling,
+  getBlingStatus,
+  refreshAccessToken,
+} from '@/services/blingAuth';
+import { listarProdutos, listarPedidos, cadastrarProduto } from '@/services/blingApi';
 
 export default function BlingPanel() {
   const [status, setStatus] = useState(null);
@@ -37,13 +22,19 @@ export default function BlingPanel() {
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState('info');
 
+  // Produtos
   const [produtos, setProdutos] = useState([]);
   const [loadingProdutos, setLoadingProdutos] = useState(false);
+
+  // Pedidos
   const [pedidos, setPedidos] = useState([]);
   const [loadingPedidos, setLoadingPedidos] = useState(false);
+
+  // Cadastrar produto
   const [novoProduto, setNovoProduto] = useState({ nome: '', codigo: '', preco: '', unidade: 'UN' });
   const [cadastrando, setCadastrando] = useState(false);
 
+  // Detecta callback OAuth na URL
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
@@ -58,7 +49,7 @@ export default function BlingPanel() {
 
   const checkStatus = async () => {
     setLoading(true);
-    const s = await callProxy('status');
+    const s = await getBlingStatus();
     setStatus(s);
     setLoading(false);
   };
@@ -67,8 +58,7 @@ export default function BlingPanel() {
     setLoading(true);
     setMsg('Conectando ao Bling...');
     setMsgType('info');
-    const redirectUri = `${window.location.origin}${window.location.pathname}`;
-    await callProxy('exchange', { code, redirect_uri: redirectUri });
+    await exchangeCodeForToken(code);
     setMsg('Bling conectado com sucesso!');
     setMsgType('success');
     await checkStatus();
@@ -80,7 +70,7 @@ export default function BlingPanel() {
 
   const handleDisconnect = async () => {
     setLoading(true);
-    await callProxy('disconnect');
+    await disconnectBling();
     setStatus({ connected: false });
     setMsg('Bling desconectado.');
     setMsgType('info');
@@ -90,7 +80,7 @@ export default function BlingPanel() {
   const handleRefresh = async () => {
     setLoading(true);
     setMsg('Renovando token...');
-    await callProxy('refresh');
+    await refreshAccessToken();
     setMsg('Token renovado!');
     setMsgType('success');
     await checkStatus();
@@ -98,27 +88,25 @@ export default function BlingPanel() {
 
   const handleListarProdutos = async () => {
     setLoadingProdutos(true);
-    const data = await callProxy('listProducts');
+    const data = await listarProdutos();
     setProdutos(data?.data || []);
     setLoadingProdutos(false);
   };
 
   const handleListarPedidos = async () => {
     setLoadingPedidos(true);
-    const data = await callProxy('listOrders');
+    const data = await listarPedidos();
     setPedidos(data?.data || []);
     setLoadingPedidos(false);
   };
 
   const handleCadastrarProduto = async () => {
     setCadastrando(true);
-    await callProxy('createProduct', {
-      produto: {
-        nome: novoProduto.nome,
-        codigo: novoProduto.codigo,
-        preco: parseFloat(novoProduto.preco) || 0,
-        unidade: novoProduto.unidade,
-      },
+    await cadastrarProduto({
+      nome: novoProduto.nome,
+      codigo: novoProduto.codigo,
+      preco: parseFloat(novoProduto.preco) || 0,
+      unidade: novoProduto.unidade,
     });
     setNovoProduto({ nome: '', codigo: '', preco: '', unidade: 'UN' });
     setMsg('Produto cadastrado no Bling!');
@@ -136,6 +124,7 @@ export default function BlingPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Status Card */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
@@ -151,9 +140,7 @@ export default function BlingPanel() {
         <CardContent className="space-y-3">
           {msg && (
             <Alert className={msgType === 'success' ? 'border-green-200 bg-green-50' : ''}>
-              {msgType === 'success'
-                ? <CheckCircle2 className="h-4 w-4 text-green-600" />
-                : <AlertCircle className="h-4 w-4" />}
+              {msgType === 'success' ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <AlertCircle className="h-4 w-4" />}
               <AlertDescription className={msgType === 'success' ? 'text-green-800' : ''}>{msg}</AlertDescription>
             </Alert>
           )}
@@ -184,6 +171,7 @@ export default function BlingPanel() {
         </CardContent>
       </Card>
 
+      {/* Abas */}
       {status?.connected && !status?.expired && (
         <Tabs defaultValue="produtos">
           <TabsList>
@@ -192,6 +180,7 @@ export default function BlingPanel() {
             <TabsTrigger value="cadastrar" className="gap-2"><Plus className="w-4 h-4" /> Cadastrar Produto</TabsTrigger>
           </TabsList>
 
+          {/* Produtos */}
           <TabsContent value="produtos">
             <Card>
               <CardContent className="p-4 space-y-3">
@@ -231,6 +220,7 @@ export default function BlingPanel() {
             </Card>
           </TabsContent>
 
+          {/* Pedidos */}
           <TabsContent value="pedidos">
             <Card>
               <CardContent className="p-4 space-y-3">
@@ -268,6 +258,7 @@ export default function BlingPanel() {
             </Card>
           </TabsContent>
 
+          {/* Cadastrar Produto */}
           <TabsContent value="cadastrar">
             <Card>
               <CardContent className="p-4 space-y-3">
