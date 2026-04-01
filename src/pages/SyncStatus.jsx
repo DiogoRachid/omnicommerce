@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   RefreshCw, CheckCircle2, XCircle, Loader2, Clock,
-  Package, Warehouse, ShoppingCart, AlertCircle, Zap
+  Package, Warehouse, ShoppingCart, AlertCircle, Trash2
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -59,6 +59,21 @@ export default function SyncStatus() {
     queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
   };
 
+  const handleResetAll = async () => {
+    if (confirm('⚠️ Isso vai apagar TODOS os logs de sincronização. Continuar?')) {
+      setSyncing(true);
+      try {
+        await base44.functions.invoke('resetSyncLogs', {});
+        setActiveLogId(null);
+        queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+      } catch (e) {
+        console.error('Erro ao resetar logs:', e);
+      } finally {
+        setSyncing(false);
+      }
+    }
+  };
+
   const formatDate = (iso) => {
     if (!iso) return '-';
     try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR }); } catch { return iso; }
@@ -90,7 +105,7 @@ export default function SyncStatus() {
             Atualização automática de produtos, estoque e vendas — executa a cada hora
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {isRunning && (
             <Button onClick={handleStopSync} variant="destructive" size="sm" className="gap-2">
               <XCircle className="w-4 h-4" /> Parar e limpar
@@ -101,6 +116,9 @@ export default function SyncStatus() {
               ? <Loader2 className="w-4 h-4 animate-spin" />
               : <RefreshCw className="w-4 h-4" />}
             {isRunning ? 'Sincronizando...' : syncing ? 'Iniciando...' : 'Sincronizar agora'}
+          </Button>
+          <Button onClick={handleResetAll} disabled={syncing} variant="outline" size="sm" className="gap-2 border-red-200 text-red-600 hover:bg-red-50">
+            <Trash2 className="w-4 h-4" /> Resetar histórico
           </Button>
         </div>
       </div>
