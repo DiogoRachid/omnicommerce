@@ -41,9 +41,17 @@ async function refreshToken(base44, tokenRecord) {
 }
 
 async function getValidToken(base44) {
-  let token = await getToken(base44);
-  if (token.expires_at && Date.now() > token.expires_at - 5 * 60 * 1000) token = await refreshToken(base44, token);
-  return token.access_token;
+   let token = await getToken(base44);
+   // Se token expirado ou próximo de expirar, renova
+   if (!token.expires_at || Date.now() > token.expires_at - 5 * 60 * 1000) {
+     try {
+       token = await refreshToken(base44, token);
+     } catch (e) {
+       throw new Error(`Falha ao renovar token Bling: ${e.message}`);
+     }
+   }
+   if (!token.access_token) throw new Error('Token de acesso vazio após validação');
+   return token.access_token;
 }
 
 async function blingGet(accessToken, path, retries = 3) {
@@ -97,49 +105,73 @@ async function updateLog(base44, logId, patch) {
   try { await base44.asServiceRole.entities.SyncLog.update(logId, patch); } catch { /* best effort */ }
 }
 
-// ─── SYNC DELTA: apenas primeira página (ultra rápido para automação — max 30s)
+// ─── SYNC DELTA: apenas primeiros 20 produtos simples (ultra rápido para automação — max 30s)
 async function syncDelta(base44, accessToken, companyId, logId) {
-  let prodCriados = 0, prodAtualizados = 0, vendasCriadas = 0, erros = 0;
+   let prodCriados = 0, prodAtualizados = 0, vendasCriadas = 0, erros = 0;
 
-  // 1. Apenas produtos recentes simples (30 max, sem variações)
-  try {
-    const data = await blingGet(accessToken, `/produtos?pagina=1&limite=30&criterio=5&tipo=T`);
-    const recentProducts = data?.data || [];
-    
-    // Apenas produtos simples (sem variações) — sem buscas extras
-    const simples = recentProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
-    
-    for (let i = 0; i < simples.length; i += 10) {
-      const lote = simples.slice(i, i + 10);
-      await Promise.all(lote.map(async (p) => {
-        try {
-          const record = { ...buildProductRecord(p, companyId), tipo: 'simples' };
-          await base44.asServiceRole.entities.Product.create(record);
-          prodCriados++;
-        } catch (e) {
-          if (e.message?.includes('duplicate') || e.message?.includes('Duplicate')) prodAtualizados++;
-          else erros++;
-        }
-      }));
-    }
-  } catch (e) {
-    // Se falhar, retorna o que conseguiu
-  }
+   // 1. Apenas primeiros 20 produtos simples — sem buscas de estoque
+   try {
+     const data = await blingGet(accessToken, `/produtos?pagina=1&limite=20&criterio=5&tipo=T`);
+     const recentProducts = data?.data || [];
+     const simples = recentProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
 
-  // 2. Vendas recentes (apenas 20 para ser rápido)
-  try {
-    const data = await blingGet(accessToken, `/pedidos/vendas?pagina=1&limite=20`);
-    const allOrders = data?.data || [];
-    for (const order of allOrders) {
-      try {
-        const orderItems = (order.itens || []).map(item => ({ product_name: item.produto?.nome || '', sku: item.produto?.codigo || '', quantidade: parseFloat(item.quantidade || 1), preco_unitario: parseFloat(item.valor || 0), desconto: 0, total: parseFloat(item.quantidade || 1) * parseFloat(item.valor || 0) }));
-        await base44.asServiceRole.entities.Sale.create(clean({ canal: { 'Loja Virtual': 'ecommerce', 'Mercado Livre': 'mercado_livre', 'Shopee': 'shopee', 'Amazon': 'amazon', 'B2B': 'b2b' }[order.loja?.nome] || 'outro', status: { 0: 'pendente', 1: 'pendente', 3: 'confirmada', 4: 'confirmada', 6: 'cancelada', 9: 'devolvida' }[order.situacao?.id] || 'pendente', client_name: order.contato?.nome || undefined, subtotal: parseFloat(order.totalProdutos || order.total || 0), desconto: parseFloat(order.desconto?.valor || 0), frete: parseFloat(order.transporte?.frete || 0), total: parseFloat(order.totalProdutos || order.total || 0), forma_pagamento: 'marketplace', marketplace_order_id: String(order.id), company_id: companyId || undefined, items: orderItems }));
-        vendasCriadas++;
-      } catch { erros++; }
-    }
-  } catch { /* silencioso */ }
+     // Processa sequencialmente, não em paralelo, para não estressar Bling
+     for (const p of simples) {
+       try {
+         const record = { ...buildProductRecord(p, companyId), tipo: 'simples' };
+         await base44.asServiceRole.entities.Product.create(record);
+         prodCriados++;
+       } catch (e) {
+         // Duplicata = produto já existe, contabiliza como atualizado
+         if (e.message?.includes('duplicate') || e.message?.includes('Duplicate')) prodAtualizados++;
+         else erros++;
+       }
+       await sleep(100); // Pequeno delay entre requisições
+     }
+   } catch (e) {
+     // Log: se falhar, tenta continuar com vendas
+     console.error(`Erro ao sincronizar produtos delta: ${e.message}`);
+   }
 
-  return { prodCriados, prodAtualizados, vendasCriadas, erros };
+   // 2. Apenas 20 vendas mais recentes
+   try {
+     const data = await blingGet(accessToken, `/pedidos/vendas?pagina=1&limite=20`);
+     const allOrders = data?.data || [];
+
+     for (const order of allOrders) {
+       try {
+         const orderItems = (order.itens || []).map(item => ({ 
+           product_name: item.produto?.nome || '', 
+           sku: item.produto?.codigo || '', 
+           quantidade: parseFloat(item.quantidade || 1), 
+           preco_unitario: parseFloat(item.valor || 0), 
+           desconto: 0, 
+           total: parseFloat(item.quantidade || 1) * parseFloat(item.valor || 0) 
+         }));
+         const CANAL_MAP = { 'Loja Virtual': 'ecommerce', 'Mercado Livre': 'mercado_livre', 'Shopee': 'shopee', 'Amazon': 'amazon', 'B2B': 'b2b' };
+         const STATUS_MAP = { 0: 'pendente', 1: 'pendente', 3: 'confirmada', 4: 'confirmada', 6: 'cancelada', 9: 'devolvida' };
+         await base44.asServiceRole.entities.Sale.create(clean({ 
+           canal: CANAL_MAP[order.loja?.nome] || 'outro', 
+           status: STATUS_MAP[order.situacao?.id] || 'pendente', 
+           client_name: order.contato?.nome || undefined, 
+           subtotal: parseFloat(order.totalProdutos || order.total || 0), 
+           desconto: parseFloat(order.desconto?.valor || 0), 
+           frete: parseFloat(order.transporte?.frete || 0), 
+           total: parseFloat(order.totalProdutos || order.total || 0), 
+           forma_pagamento: 'marketplace', 
+           marketplace_order_id: String(order.id), 
+           company_id: companyId || undefined, 
+           items: orderItems 
+         }));
+         vendasCriadas++;
+       } catch { erros++; }
+       await sleep(100);
+     }
+   } catch (e) {
+     console.error(`Erro ao sincronizar vendas delta: ${e.message}`);
+   }
+
+   return { prodCriados, prodAtualizados, vendasCriadas, erros };
 }
 
 // ─── SYNC FULL: todos os produtos (para execução manual via frontend) ─────────────────────────
