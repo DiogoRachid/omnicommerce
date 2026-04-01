@@ -52,7 +52,7 @@ export default function SyncStatus() {
   const handleStopSync = async () => {
     if (activeLogId) {
       try {
-        await base44.asServiceRole.entities.SyncLog.delete(activeLogId);
+        await base44.functions.invoke('deleteSyncLog', { logId: activeLogId });
       } catch { /* best effort */ }
     }
     setActiveLogId(null);
