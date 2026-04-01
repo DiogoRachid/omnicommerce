@@ -1,0 +1,64 @@
+{
+  "name": "SyncLog",
+  "type": "object",
+  "properties": {
+    "tipo": {
+      "type": "string",
+      "enum": [
+        "produtos",
+        "estoque",
+        "vendas",
+        "completo"
+      ],
+      "description": "Tipo de sincroniza\u00e7\u00e3o"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "em_andamento",
+        "sucesso",
+        "erro"
+      ],
+      "description": "Status da sincroniza\u00e7\u00e3o"
+    },
+    "iniciado_em": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finalizado_em": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "produtos_atualizados": {
+      "type": "number",
+      "default": 0
+    },
+    "produtos_criados": {
+      "type": "number",
+      "default": 0
+    },
+    "estoques_atualizados": {
+      "type": "number",
+      "default": 0
+    },
+    "vendas_criadas": {
+      "type": "number",
+      "default": 0
+    },
+    "erros": {
+      "type": "number",
+      "default": 0
+    },
+    "detalhes": {
+      "type": "string",
+      "description": "Mensagem de detalhe ou erro"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tipo",
+    "status"
+  ]
+}

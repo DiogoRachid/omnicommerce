@@ -23,6 +23,7 @@ import IAPricing from '@/pages/IAPricing';
 import Settings from '@/pages/Settings';
 import BlingCallback from '@/pages/BlingCallback';
 import ProductOrganizer from '@/pages/ProductOrganizer';
+import SyncStatus from '@/pages/SyncStatus';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -63,6 +64,7 @@ const AuthenticatedApp = () => {
         <Route path="/ia-precos" element={<IAPricing />} />
         <Route path="/configuracoes" element={<Settings />} />
         <Route path="/organizar-produtos" element={<ProductOrganizer />} />
+        <Route path="/sync-bling" element={<SyncStatus />} />
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
       <Route path="*" element={<PageNotFound />} />
