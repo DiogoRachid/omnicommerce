@@ -2,14 +2,6 @@
   "name": "BlingToken",
   "type": "object",
   "properties": {
-    "company_id": {
-      "type": "string",
-      "description": "ID da empresa vinculada"
-    },
-    "account": {
-      "type": "string",
-      "description": "Identificador da conta Bling"
-    },
     "access_token": {
       "type": "string",
       "description": "Token de acesso OAuth2"
@@ -19,14 +11,17 @@
       "description": "Token de refresh OAuth2"
     },
     "expires_at": {
+      "type": "number",
+      "description": "Timestamp de expira\u00e7\u00e3o do access_token (Unix ms)"
+    },
+    "scope": {
       "type": "string",
-      "format": "date-time",
-      "description": "Data/hora de expira\u00e7\u00e3o do access_token"
+      "description": "Escopos autorizados"
     }
   },
   "required": [
-    "company_id",
     "access_token",
-    "refresh_token"
+    "refresh_token",
+    "expires_at"
   ]
 }

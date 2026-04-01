@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Switch } from '@/components/ui/switch';
 import { Building2, Plus, Check, X, Download, ShoppingBag, Copy, CheckCheck } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
-import BlingCompanyConfig from '@/components/bling/BlingCompanyConfig';
+import BlingPanel from '@/components/BlingPanel';
 
 const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
 
@@ -296,7 +296,7 @@ export default function Companies() {
               {editingCompany?.id && (
                 <div className="rounded-lg border p-3 bg-muted/20">
                   <p className="text-xs font-medium text-muted-foreground mb-2">Status da Conexão</p>
-                  <BlingCompanyConfig company={{ ...editingCompany, ...form }} />
+                  <BlingPanel />
                 </div>
               )}
               {!editingCompany && (
