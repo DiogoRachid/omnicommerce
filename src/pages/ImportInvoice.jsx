@@ -74,7 +74,10 @@ export default function ImportInvoice() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const companyId = selectedCompany !== 'all' ? selectedCompany : undefined;
+      if (!selectedCompany || selectedCompany === 'all') {
+        throw new Error('Selecione uma empresa antes de importar');
+      }
+      const companyId = selectedCompany;
 
       // Cria fornecedor se não existir
       let supplier = null;
