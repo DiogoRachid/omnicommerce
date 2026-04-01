@@ -1,7 +1,7 @@
 import { base44 } from '@/api/base44Client';
 
-const CLIENT_ID = import.meta.env.VITE_BLING_CLIENT_ID;
-const CLIENT_SECRET = import.meta.env.VITE_BLING_CLIENT_SECRET;
+const CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
+const CLIENT_SECRET = import.meta.env.VITE_BLING_CLIENT_SECRET || '';
 const REDIRECT_URI = 'https://app.base44.com/api/apps/69c847515e26f8ca005176ef/auth/sso/callback';
 const TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token';
 const AUTH_URL = 'https://www.bling.com.br/Api/v3/oauth/authorize';
