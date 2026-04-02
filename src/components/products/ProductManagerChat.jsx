@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Bot, Send, Loader2, Sparkles, Package, TrendingUp, Tag, AlertCircle } from 'lucide-react';
+import { Bot, Send, Loader2, Sparkles, Package, TrendingUp, Tag, AlertCircle, Image, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const SUGGESTIONS = [
@@ -50,13 +50,49 @@ export default function ProductManagerChat({ open, onClose, selectedCompany }) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Paste de imagens (Ctrl+V)
+  useEffect(() => {
+    if (!open) return;
+    const handlePaste = async (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find(it => it.type.startsWith('image/'));
+      if (!imageItem) return;
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (file) await addFileToQueue(file);
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [open, conversation]);
+
+  const addFileToQueue = async (file) => {
+    setUploading(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+      setPendingFiles(prev => [...prev, { url: file_url, name: file.name, preview }]);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileInput = (e) => {
+    const file = e.target.files?.[0];
+    if (file) addFileToQueue(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   useEffect(() => {
     if (!open) return;
     setMessages([]);
     setInput('');
+    setPendingFiles([]);
     setInitLoading(true);
     base44.agents.createConversation({
       agent_name: 'product_manager',
@@ -82,11 +118,15 @@ export default function ProductManagerChat({ open, onClose, selectedCompany }) {
 
   const handleSend = async (text) => {
     const msg = text || input;
-    if (!msg.trim() || !conversation || sending) return;
+    if ((!msg.trim() && pendingFiles.length === 0) || !conversation || sending) return;
     setInput('');
+    const filesToSend = [...pendingFiles];
+    setPendingFiles([]);
     setSending(true);
     try {
-      await base44.agents.addMessage(conversation, { role: 'user', content: msg });
+      const payload = { role: 'user', content: msg || 'Analise esta imagem' };
+      if (filesToSend.length > 0) payload.file_urls = filesToSend.map(f => f.url);
+      await base44.agents.addMessage(conversation, payload);
     } finally {
       setSending(false);
     }
@@ -158,18 +198,50 @@ export default function ProductManagerChat({ open, onClose, selectedCompany }) {
         </div>
 
         {/* Input */}
-        <div className="border-t p-3 shrink-0">
+        <div className="border-t p-3 shrink-0 space-y-2">
+          {/* Preview de arquivos pendentes */}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pendingFiles.map((f, i) => (
+                <div key={i} className="relative group">
+                  {f.preview ? (
+                    <img src={f.preview} alt="" className="h-14 w-14 object-cover rounded-lg border" />
+                  ) : (
+                    <div className="h-14 w-14 rounded-lg border bg-muted flex items-center justify-center text-xs text-muted-foreground text-center px-1 overflow-hidden">
+                      {f.name}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setPendingFiles(prev => prev.filter((_, idx) => idx !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending || initLoading || uploading}
+              title="Enviar imagem ou arquivo (ou cole com Ctrl+V)"
+              className="shrink-0 h-9 w-9 rounded-md border flex items-center justify-center hover:bg-muted transition-colors disabled:opacity-50"
+            >
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <Image className="w-4 h-4 text-muted-foreground" />}
+            </button>
+            <input ref={fileInputRef} type="file" accept="image/*,.pdf,.xlsx,.csv" className="hidden" onChange={handleFileInput} />
             <Input
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder="Ex: quais produtos estão com estoque baixo?"
+              placeholder="Ex: quais produtos estão com estoque baixo? (Ctrl+V para colar print)"
               disabled={sending || initLoading}
               className="flex-1"
             />
-            <Button size="icon" onClick={() => handleSend()} disabled={!input.trim() || sending || initLoading}>
+            <Button size="icon" onClick={() => handleSend()} disabled={(!input.trim() && pendingFiles.length === 0) || sending || initLoading || uploading}>
               {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
