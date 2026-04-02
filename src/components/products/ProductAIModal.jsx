@@ -361,6 +361,17 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
   const isTyping = sending || (messages.length > 0 && messages[messages.length - 1]?.role === 'user');
   const modo = extractedProduct?.modo || 'simples';
 
+  // Faz download real das URLs de imagem e re-hospeda no storage
+  const uploadImages = async (fotos) => {
+    if (!Array.isArray(fotos) || fotos.length === 0) return [];
+    try {
+      const res = await base44.functions.invoke('downloadAndUploadImage', { urls: fotos });
+      return res.data?.uploaded || [];
+    } catch {
+      return [];
+    }
+  };
+
   // ── SAVE ──────────────────────────────────────────────────────────────────
   const handleSave = async (draft = false) => {
     if (!extractedProduct) return;
@@ -368,6 +379,9 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
     const companyId = selectedCompany && selectedCompany !== 'all' ? selectedCompany : undefined;
 
     try {
+      // Faz upload real das imagens antes de salvar
+      const fotosUploadadas = await uploadImages(extractedProduct.fotos);
+
       if (modo === 'pai_com_variacoes') {
         // Cria produto PAI
         const pai = await base44.entities.Product.create({
@@ -387,7 +401,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           largura_cm: parseFloat(extractedProduct.largura_cm) || 0,
           comprimento_cm: parseFloat(extractedProduct.comprimento_cm) || 0,
           descricao: extractedProduct.descricao || '',
-          fotos: Array.isArray(extractedProduct.fotos) ? extractedProduct.fotos : [],
+          fotos: fotosUploadadas,
           atributos_extras: extractedProduct.campos_especificos || {},
           tipo: 'pai',
           origem: 'manual',
@@ -455,7 +469,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           largura_cm: parseFloat(extractedProduct.largura_cm) || 0,
           comprimento_cm: parseFloat(extractedProduct.comprimento_cm) || 0,
           descricao: extractedProduct.descricao || '',
-          fotos: Array.isArray(extractedProduct.fotos) ? extractedProduct.fotos : [],
+          fotos: fotosUploadadas,
           atributos_extras: extractedProduct.campos_especificos || {},
           tipo: 'simples',
           origem: 'manual',
