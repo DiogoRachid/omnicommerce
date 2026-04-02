@@ -1,0 +1,29 @@
+{
+  "name": "Category",
+  "type": "object",
+  "properties": {
+    "slug": {
+      "type": "string",
+      "description": "Identificador \u00fanico da categoria (ex: calcados_infantis, eletronicos_portateis)"
+    },
+    "nome": {
+      "type": "string",
+      "description": "Nome leg\u00edvel da categoria (ex: Cal\u00e7ados Infantis)"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o da categoria"
+    },
+    "categoria_pai_slug": {
+      "type": "string",
+      "description": "Slug da categoria pai (para subcategorias)"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "slug",
+    "nome"
+  ]
+}

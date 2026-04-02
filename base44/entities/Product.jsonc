@@ -23,27 +23,7 @@
     },
     "categoria": {
       "type": "string",
-      "enum": [
-        "eletronicos",
-        "informatica",
-        "eletrodomesticos",
-        "vestuario",
-        "calcados",
-        "acessorios_moda",
-        "moveis",
-        "cama_mesa_banho",
-        "brinquedos",
-        "esportes",
-        "beleza_saude",
-        "alimentos_bebidas",
-        "automotivo",
-        "ferramentas",
-        "livros_midia",
-        "joias_relogios",
-        "pet_shop",
-        "outros"
-      ],
-      "description": "Categoria do produto"
+      "description": "Categoria do produto (slug da categoria, ex: calcados, eletronicos, calcados_infantis)"
     },
     "ncm": {
       "type": "string",

@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Edit, Package, Layers } from 'lucide-react';
-import { CATEGORIA_MAP, formatBRL, calcTributos } from '@/lib/productCategories';
+import { getCategoriaLabel, formatBRL, calcTributos } from '@/lib/productCategories';
 
 const Field = ({ label, value }) => {
   if (!value && value !== 0) return null;
@@ -20,7 +20,7 @@ export default function ProductDetailModal({ product, variacoes = [], onClose })
   if (!product) return null;
   const isPai = product.tipo === 'pai';
   const tributos = calcTributos(product.preco_venda, product.categoria);
-  const catLabel = CATEGORIA_MAP[product.categoria]?.label || product.categoria || '-';
+  const catLabel = getCategoriaLabel(product.categoria);
 
   return (
     <Dialog open={!!product} onOpenChange={onClose}>

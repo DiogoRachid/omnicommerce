@@ -24,6 +24,12 @@ export const CATEGORIAS = [
 
 export const CATEGORIA_MAP = Object.fromEntries(CATEGORIAS.map(c => [c.value, c]));
 
+// Retorna o label legível de uma categoria, mesmo que seja um slug customizado
+export function getCategoriaLabel(slug) {
+  if (!slug) return '-';
+  return CATEGORIA_MAP[slug]?.label || slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function getAliquota(categoria) {
   return CATEGORIA_MAP[categoria]?.aliquota || 0.32;
 }

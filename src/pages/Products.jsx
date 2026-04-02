@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
-import { CATEGORIA_MAP, formatBRL, calcTributos } from '@/lib/productCategories';
+import { getCategoriaLabel, formatBRL, calcTributos } from '@/lib/productCategories';
 import ProductAIModal from '@/components/products/ProductAIModal';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
 import ColumnConfigPanel, { DEFAULT_COLUMNS } from '@/components/products/ColumnConfigPanel';
@@ -69,7 +69,7 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
   isVariacao = false, indent = 0, extraLeft, parentNome = '', parentCor = '' }) {
   const isPai = p.tipo === 'pai';
   const tributos = calcTributos(p.preco_venda, p.categoria);
-  const catLabel = CATEGORIA_MAP[p.categoria]?.label || p.categoria || '-';
+  const catLabel = getCategoriaLabel(p.categoria);
 
   const Td = ({ children, right, mono, muted, small, className = '' }) => (
     <td className={`border border-border px-2 py-1.5 text-xs ${right ? 'text-right' : ''} ${mono ? 'font-mono' : ''} ${muted ? 'text-muted-foreground' : ''} ${small ? 'text-[11px]' : ''} ${className}`}>
