@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
-  Trash2, ChevronRight, ChevronDown, Layers, Download, Sparkles
+  Trash2, ChevronRight, ChevronDown, Layers, Download, Sparkles, Bot
 } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
@@ -17,6 +17,7 @@ import ProductAIModal from '@/components/products/ProductAIModal';
 import ProductDetailModal from '@/components/products/ProductDetailModal';
 import ColumnConfigPanel, { DEFAULT_COLUMNS } from '@/components/products/ColumnConfigPanel';
 import ViewModeSelector from '@/components/products/ViewModeSelector';
+import ProductManagerChat from '@/components/products/ProductManagerChat';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -346,6 +347,7 @@ export default function Products() {
   const [filters, setFilters] = useState([]);
   const [page, setPage] = useState(0);
   const [detailProduct, setDetailProduct] = useState(null);
+  const [showManagerChat, setShowManagerChat] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('products_viewMode') || 'pai_collapsed');
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem('products_cols')) || DEFAULT_COLUMNS; } catch { return DEFAULT_COLUMNS; }
@@ -437,6 +439,9 @@ export default function Products() {
           <Link to="/notas-fiscais/importar">
             <Button variant="outline">Importar XML</Button>
           </Link>
+          <Button variant="outline" onClick={() => setShowManagerChat(true)} className="gap-2">
+            <Bot className="w-4 h-4" /> Chat IA
+          </Button>
           <Button variant="outline" onClick={() => setShowAIModal(true)} className="gap-2 border-primary/40 text-primary hover:bg-primary/5">
             <Sparkles className="w-4 h-4" /> Cadastrar com IA
           </Button>
@@ -543,6 +548,7 @@ export default function Products() {
         </div>
       )}
 
+      <ProductManagerChat open={showManagerChat} onClose={() => setShowManagerChat(false)} selectedCompany={selectedCompany} />
       <BlingImportDialog company={companyForImport} open={showBlingImport} onClose={() => setShowBlingImport(false)} />
       <ProductAIModal open={showAIModal} onClose={() => setShowAIModal(false)} selectedCompany={selectedCompany} />
       <ProductDetailModal
