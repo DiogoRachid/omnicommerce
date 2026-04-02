@@ -24,6 +24,7 @@ import Reports from '@/pages/Reports';
 import IAPricing from '@/pages/IAPricing';
 import Settings from '@/pages/Settings';
 import BlingCallback from '@/pages/BlingCallback';
+import MlCallback from '@/pages/MlCallback';
 import ProductOrganizer from '@/pages/ProductOrganizer';
 import FinancialDashboard from '@/pages/FinancialDashboard';
 
@@ -71,6 +72,7 @@ const AuthenticatedApp = () => {
         <Route path="/financeiro" element={<FinancialDashboard />} />
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
+      <Route path="/ml-callback" element={<MlCallback />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

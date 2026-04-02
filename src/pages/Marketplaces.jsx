@@ -12,6 +12,7 @@ import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
 import ExportProducts from '@/components/marketplaces/ExportProducts';
 import OperationLogs from '@/components/marketplaces/OperationLogs';
+import MercadoLivrePanel from '@/components/marketplaces/MercadoLivrePanel';
 
 const marketplaceNames = {
   mercado_livre: 'Mercado Livre',
@@ -124,11 +125,20 @@ export default function Marketplaces() {
 
         {/* Contas — mantido */}
         <TabsContent value="contas" className="mt-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Integrações por Empresa</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Mercado Livre</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MercadoLivrePanel />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Integrações por Empresa</CardTitle>
+              </CardHeader>
+              <CardContent>
               <p className="text-sm text-muted-foreground mb-4">
                 Configure as integrações dos marketplaces em cada empresa na página de{' '}
                 <a href="/empresas" className="text-primary underline">Empresas</a>.
@@ -159,7 +169,8 @@ export default function Marketplaces() {
                 </div>
               )}
             </CardContent>
-          </Card>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Testar Conexão */}
