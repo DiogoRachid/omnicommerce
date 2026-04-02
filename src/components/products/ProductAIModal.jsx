@@ -377,6 +377,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           ncm: extractedProduct.ncm || '',
           cest: extractedProduct.cest || '',
           unidade_medida: extractedProduct.unidade_medida || 'UN',
+          categoria: extractedProduct.categoria || '',
           preco_custo: parseFloat(extractedProduct.preco_custo_base) || 0,
           margem_padrao: parseFloat(extractedProduct.margem_padrao) || 0,
           preco_venda: 0,
@@ -386,6 +387,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           largura_cm: parseFloat(extractedProduct.largura_cm) || 0,
           comprimento_cm: parseFloat(extractedProduct.comprimento_cm) || 0,
           descricao: extractedProduct.descricao || '',
+          fotos: Array.isArray(extractedProduct.fotos) ? extractedProduct.fotos : [],
           atributos_extras: extractedProduct.campos_especificos || {},
           tipo: 'pai',
           origem: 'manual',
@@ -443,6 +445,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           ncm: extractedProduct.ncm || '',
           cest: extractedProduct.cest || '',
           unidade_medida: extractedProduct.unidade_medida || 'UN',
+          categoria: extractedProduct.categoria || '',
           preco_custo: parseFloat(extractedProduct.preco_custo) || 0,
           margem_padrao: parseFloat(extractedProduct.margem_padrao) || 0,
           preco_venda: parseFloat(extractedProduct.preco_venda) || 0,
@@ -452,6 +455,7 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
           largura_cm: parseFloat(extractedProduct.largura_cm) || 0,
           comprimento_cm: parseFloat(extractedProduct.comprimento_cm) || 0,
           descricao: extractedProduct.descricao || '',
+          fotos: Array.isArray(extractedProduct.fotos) ? extractedProduct.fotos : [],
           atributos_extras: extractedProduct.campos_especificos || {},
           tipo: 'simples',
           origem: 'manual',
@@ -602,13 +606,18 @@ export default function ProductAIModal({ open, onClose, selectedCompany }) {
 
             <div className="border-t p-3 space-y-2 shrink-0">
               {extractedProduct && (
-                <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 flex-wrap">
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  <span>
+                  <span className="flex-1">
                     {modo === 'pai_com_variacoes'
-                      ? <>Produto pai detectado: <strong>{extractedProduct.nome}</strong> com <strong>{extractedProduct.variacoes?.length || 0} variações</strong></>
-                      : <>Produto detectado: <strong>{extractedProduct.nome || extractedProduct.sku}</strong></>
+                      ? <><strong>{extractedProduct.nome}</strong> · <strong>{extractedProduct.variacoes?.length || 0} variações</strong></>
+                      : <><strong>{extractedProduct.nome || extractedProduct.sku}</strong></>
                     }
+                    {extractedProduct.ean && <span className="ml-2 text-green-600">· EAN: {extractedProduct.ean}</span>}
+                    {extractedProduct.categoria && <span className="ml-2 text-green-600">· {extractedProduct.categoria}</span>}
+                    {Array.isArray(extractedProduct.fotos) && extractedProduct.fotos.length > 0 && (
+                      <span className="ml-2 text-green-600">· {extractedProduct.fotos.length} imagens</span>
+                    )}
                   </span>
                   <Button size="sm" className="ml-auto h-6 text-xs shrink-0" onClick={() => setStep('confirm')}>
                     Revisar →
