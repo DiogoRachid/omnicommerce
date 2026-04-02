@@ -1,0 +1,90 @@
+{
+  "name": "ProductTemplate",
+  "type": "object",
+  "properties": {
+    "tipo_produto": {
+      "type": "string",
+      "description": "Tipo do produto (ex: chinelo, lampada, camiseta)"
+    },
+    "campos_especificos": {
+      "type": "array",
+      "description": "Lista de campos din\u00e2micos espec\u00edficos desse tipo de produto",
+      "items": {
+        "type": "object",
+        "properties": {
+          "chave": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "select",
+              "boolean"
+            ]
+          },
+          "opcoes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "obrigatorio": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "marketplaces_categorias": {
+      "type": "object",
+      "description": "Categoria correta para cada marketplace",
+      "properties": {
+        "mercado_livre": {
+          "type": "string"
+        },
+        "shopee": {
+          "type": "string"
+        },
+        "amazon": {
+          "type": "string"
+        },
+        "magalu": {
+          "type": "string"
+        }
+      }
+    },
+    "titulo_template_ml": {
+      "type": "string",
+      "description": "Template de t\u00edtulo otimizado para Mercado Livre (m\u00e1x 60 chars)"
+    },
+    "titulo_template_shopee": {
+      "type": "string",
+      "description": "Template de t\u00edtulo otimizado para Shopee (m\u00e1x 120 chars)"
+    },
+    "descricao_template": {
+      "type": "string",
+      "description": "Template de descri\u00e7\u00e3o padr\u00e3o para esse tipo de produto"
+    },
+    "palavras_chave": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Palavras-chave relevantes para busca"
+    },
+    "criado_por_agente": {
+      "type": "boolean",
+      "default": false
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "tipo_produto"
+  ]
+}

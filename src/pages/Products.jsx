@@ -8,11 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
-  Trash2, ChevronRight, ChevronDown, Layers, Download
+  Trash2, ChevronRight, ChevronDown, Layers, Download, Sparkles
 } from 'lucide-react';
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
 import { CATEGORIA_MAP, formatBRL, calcTributos } from '@/lib/productCategories';
+import ProductAIModal from '@/components/products/ProductAIModal';
 
 export default function Products() {
   const { selectedCompany } = useOutletContext();
@@ -20,6 +21,7 @@ export default function Products() {
   const [selected, setSelected] = useState({});
   const [expanded, setExpanded] = useState({});
   const [showBlingImport, setShowBlingImport] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
   const [filters, setFilters] = useState([]);
   const [page, setPage] = useState(0);
   const ITEMS_PER_PAGE = 50;
@@ -265,6 +267,9 @@ export default function Products() {
           <Link to="/notas-fiscais/importar">
             <Button variant="outline">Importar XML</Button>
           </Link>
+          <Button variant="outline" onClick={() => setShowAIModal(true)} className="gap-2 border-primary/40 text-primary hover:bg-primary/5">
+            <Sparkles className="w-4 h-4" /> Cadastrar com IA
+          </Button>
           <Link to="/produtos/novo">
             <Button><Plus className="w-4 h-4 mr-2" /> Novo Produto</Button>
           </Link>
@@ -373,6 +378,12 @@ export default function Products() {
         company={companyForImport}
         open={showBlingImport}
         onClose={() => setShowBlingImport(false)}
+      />
+
+      <ProductAIModal
+        open={showAIModal}
+        onClose={() => setShowAIModal(false)}
+        selectedCompany={selectedCompany}
       />
     </div>
   );
