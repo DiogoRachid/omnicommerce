@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useOutletContext, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -37,9 +37,36 @@ function groupByPrimary(variacoes) {
   return map;
 }
 
+// ── Hook de colunas redimensionáveis ─────────────────────────────────────────
+function useResizableColumns(initialWidths) {
+  const [colWidths, setColWidths] = useState(initialWidths);
+  const dragging = useRef(null);
+
+  const onMouseDown = useCallback((colKey, e) => {
+    e.preventDefault();
+    dragging.current = { colKey, startX: e.clientX, startW: colWidths[colKey] };
+
+    const onMove = (ev) => {
+      if (!dragging.current) return;
+      const delta = ev.clientX - dragging.current.startX;
+      const newW = Math.max(40, dragging.current.startW + delta);
+      setColWidths(prev => ({ ...prev, [dragging.current.colKey]: newW }));
+    };
+    const onUp = () => {
+      dragging.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [colWidths]);
+
+  return [colWidths, onMouseDown];
+}
+
 // ── Componente de linha de tabela ─────────────────────────────────────────────
 function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDelete,
-  isVariacao = false, indent = 0, extraLeft }) {
+  isVariacao = false, indent = 0, extraLeft, parentNome = '', parentCor = '' }) {
   const isPai = p.tipo === 'pai';
   const tributos = calcTributos(p.preco_venda, p.categoria);
   const catLabel = CATEGORIA_MAP[p.categoria]?.label || p.categoria || '-';
@@ -67,9 +94,23 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
           {isVariacao && indent > 0 && <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />}
           <div onClick={e => e.stopPropagation()}>
             <button className="text-left hover:text-primary transition-colors" onClick={() => onOpen(p)}>
-              <p className="font-medium leading-tight">{p.nome}</p>
-              {p.marca && <p className="text-[10px] text-muted-foreground">{p.marca}</p>}
-              {isVariacao && p.variacoes_atributos && <p className="text-[10px] text-muted-foreground">{p.variacoes_atributos}</p>}
+              {isVariacao && parentNome ? (
+                // Mostra só o que é diferente: remove nome do pai e cor já exibida
+                <p className="font-medium leading-tight">
+                  {(() => {
+                    const attrs = (p.variacoes_atributos || '').split('|').map(s => s.trim());
+                    // Se já mostramos a cor no grupo pai, exibe só o segundo atributo (numeração)
+                    if (parentCor && attrs.length > 1) {
+                      const rem = attrs.filter(a => a.toLowerCase() !== parentCor.toLowerCase());
+                      return rem.join(' | ') || attrs[attrs.length - 1];
+                    }
+                    return attrs.join(' | ') || p.nome;
+                  })()}
+                </p>
+              ) : (
+                <p className="font-medium leading-tight">{p.nome}</p>
+              )}
+              {!isVariacao && p.marca && <p className="text-[10px] text-muted-foreground">{p.marca}</p>}
             </button>
           </div>
         </div>
@@ -153,12 +194,14 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
     ...extra,
   });
 
+  const varRow = (v, pNome, pCor, extra = {}) =>
+    <ProductRow key={v.id} p={v} isVariacao parentNome={pNome} parentCor={pCor} {...rowProps(v, { isVariacao: true, ...extra })} />;
+
   if (viewMode === 'flat_all') {
-    // Todas as variações listadas individualmente
     paginatedFiltered.forEach(p => {
       const variacoes = variacoesPorPai[p.id] || [];
       if (p.tipo === 'pai') {
-        variacoes.forEach(v => rows.push(<ProductRow key={v.id} p={v} isVariacao {...rowProps(v)} />));
+        variacoes.forEach(v => rows.push(varRow(v, p.nome, '')));
       } else {
         rows.push(<ProductRow key={p.id} p={p} {...rowProps(p)} />);
       }
@@ -237,9 +280,7 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
             );
 
             if (isExpCor) {
-              vars.forEach(v => rows.push(
-                <ProductRow key={v.id} p={v} isVariacao indent={2} {...rowProps(v, { isVariacao: true })} />
-              ));
+              vars.forEach(v => rows.push(varRow(v, p.nome, cor, { indent: 2 })));
             }
           });
         }
@@ -249,7 +290,6 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
     });
 
   } else if (viewMode === 'pai_flat') {
-    // Pai → abre todas as variações na sequência
     paginatedFiltered.forEach(p => {
       const variacoes = variacoesPorPai[p.id] || [];
       const isPai = p.tipo === 'pai';
@@ -266,9 +306,7 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
         />
       );
       if (isPai && isExp) {
-        variacoes.forEach(v => rows.push(
-          <ProductRow key={v.id} p={v} isVariacao indent={1} {...rowProps(v, { isVariacao: true })} />
-        ));
+        variacoes.forEach(v => rows.push(varRow(v, p.nome, '', { indent: 1 })));
       }
     });
 
@@ -323,9 +361,7 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
             </tr>
           );
           if (isExpCor) {
-            vars.forEach(v => rows.push(
-              <ProductRow key={v.id} p={v} isVariacao indent={1} {...rowProps(v, { isVariacao: true })} />
-            ));
+            vars.forEach(v => rows.push(varRow(v, p.nome, cor, { indent: 1 })));
           }
         });
       }
@@ -351,6 +387,11 @@ export default function Products() {
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('products_viewMode') || 'pai_collapsed');
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem('products_cols')) || DEFAULT_COLUMNS; } catch { return DEFAULT_COLUMNS; }
+  });
+
+  const [colWidths, onResizeCol] = useResizableColumns({
+    produto: 220, foto: 48, categoria: 110, marca: 90, sku: 130, ean: 120,
+    custo: 90, preco: 100, tributos: 90, estoque: 100, status: 72, acoes: 90,
   });
 
   const ITEMS_PER_PAGE = 50;
@@ -415,10 +456,18 @@ export default function Products() {
 
   const companyForImport = selectedCompany && selectedCompany !== 'all' ? { id: selectedCompany } : null;
 
-  // Colunas de cabeçalho dinâmicas
-  const Th = ({ children, right, w }) => (
-    <th className={`border border-border bg-muted px-2 py-1.5 text-xs font-semibold text-muted-foreground whitespace-nowrap ${right ? 'text-right' : 'text-left'} ${w || ''}`}>
+  // Cabeçalho com resize handle
+  const Th = ({ children, right, colKey }) => (
+    <th
+      style={{ width: colWidths[colKey], minWidth: 40, position: 'relative' }}
+      className={`border border-border bg-muted px-2 py-1.5 text-xs font-semibold text-muted-foreground whitespace-nowrap select-none ${right ? 'text-right' : 'text-left'}`}
+    >
       {children}
+      <span
+        onMouseDown={e => onResizeCol(colKey, e)}
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-primary/30 transition-colors"
+        style={{ userSelect: 'none' }}
+      />
     </th>
   );
 
@@ -484,10 +533,10 @@ export default function Products() {
         <div className="space-y-4">
           <div className="rounded-lg border overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-xs">
+              <table className="border-collapse text-xs" style={{ tableLayout: 'fixed', minWidth: '100%' }}>
                 <thead>
                   <tr>
-                    <Th w="w-8">
+                    <th style={{ width: 36, minWidth: 36 }} className="border border-border bg-muted px-2 py-1.5">
                       <Checkbox
                         checked={paginatedFiltered.length > 0 && selectedCount === paginatedFiltered.length}
                         onCheckedChange={v => {
@@ -496,19 +545,19 @@ export default function Products() {
                           setSelected(s);
                         }}
                       />
-                    </Th>
-                    <Th>Produto</Th>
-                    {visibleCols.includes('foto') && <Th w="w-10">Foto</Th>}
-                    {visibleCols.includes('categoria') && <Th w="w-28">Categoria</Th>}
-                    {visibleCols.includes('marca') && <Th w="w-24">Marca</Th>}
-                    {visibleCols.includes('sku') && <Th w="w-28">SKU</Th>}
-                    {visibleCols.includes('ean') && <Th w="w-28">EAN</Th>}
-                    {visibleCols.includes('custo') && <Th right w="w-24">Custo</Th>}
-                    {visibleCols.includes('preco') && <Th right w="w-24">Preço Venda</Th>}
-                    {visibleCols.includes('tributos') && <Th right w="w-24">Tributos Aprox.</Th>}
-                    {visibleCols.includes('estoque') && <Th right w="w-28">Estoque</Th>}
-                    {visibleCols.includes('status') && <Th w="w-20">Status</Th>}
-                    <Th w="w-24">Ações</Th>
+                    </th>
+                    <Th colKey="produto">Produto</Th>
+                    {visibleCols.includes('foto') && <Th colKey="foto">Foto</Th>}
+                    {visibleCols.includes('categoria') && <Th colKey="categoria">Categoria</Th>}
+                    {visibleCols.includes('marca') && <Th colKey="marca">Marca</Th>}
+                    {visibleCols.includes('sku') && <Th colKey="sku">SKU</Th>}
+                    {visibleCols.includes('ean') && <Th colKey="ean">EAN</Th>}
+                    {visibleCols.includes('custo') && <Th right colKey="custo">Custo</Th>}
+                    {visibleCols.includes('preco') && <Th right colKey="preco">Preço Venda</Th>}
+                    {visibleCols.includes('tributos') && <Th right colKey="tributos">Tributos Aprox.</Th>}
+                    {visibleCols.includes('estoque') && <Th right colKey="estoque">Estoque</Th>}
+                    {visibleCols.includes('status') && <Th colKey="status">Status</Th>}
+                    <Th colKey="acoes">Ações</Th>
                   </tr>
                 </thead>
                 <tbody className="bg-card">
