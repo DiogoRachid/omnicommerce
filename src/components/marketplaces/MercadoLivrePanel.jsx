@@ -107,7 +107,7 @@ export default function MercadoLivrePanel() {
         </div>
         <div>
           <Label className="text-xs text-muted-foreground">Chave Secreta (Client Secret)</Label>
-          <Input value="••••••••••••••••••••••••••••••••" readOnly className="mt-1 font-mono text-sm bg-muted" type="password" />
+          <Input value="Hx4Uth2MPZ581djD8K9AxxQtNjTqLHID" readOnly className="mt-1 font-mono text-sm bg-muted" type="password" />
         </div>
       </div>
 
