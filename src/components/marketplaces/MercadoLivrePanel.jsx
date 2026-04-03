@@ -15,6 +15,7 @@ function getMlAuthUrl() {
     response_type: 'code',
     client_id: ML_APP_ID,
     redirect_uri: REDIRECT_URI,
+    scope: 'offline_access read write',
   });
   return `https://auth.mercadolivre.com.br/authorization?${params.toString()}`;
 }
