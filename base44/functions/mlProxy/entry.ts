@@ -1,7 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const ML_APP_ID = Deno.env.get('ML_APP_ID');
-const ML_SECRET_KEY = Deno.env.get('ML_SECRET_KEY');
+const ML_APP_ID = Deno.env.get('ML_APP_ID')?.trim();
+const ML_SECRET_KEY = Deno.env.get('ML_SECRET_KEY')?.trim();
+
+console.log('ML_APP_ID prefix:', ML_APP_ID?.slice(0, 6));
+console.log('ML_APP_ID length:', ML_APP_ID?.length);
 const ML_API = 'https://api.mercadolibre.com';
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
