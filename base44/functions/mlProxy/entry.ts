@@ -1,11 +1,19 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const ML_APP_ID = Deno.env.get('ML_APP_ID')?.trim();
-const ML_SECRET_KEY = Deno.env.get('ML_SECRET_KEY')?.trim();
-
-console.log('ML_APP_ID prefix:', ML_APP_ID?.slice(0, 6));
-console.log('ML_APP_ID length:', ML_APP_ID?.length);
 const ML_API = 'https://api.mercadolibre.com';
+
+// ── Pega credenciais ML da empresa ou fallback para env vars ──────────────────
+async function getMlCredentials(base44) {
+  const companies = await base44.asServiceRole.entities.Company.list('-created_date', 1);
+  const company = companies?.[0];
+  const mlConfig = company?.marketplaces_config?.mercado_livre || {};
+
+  const appId = (mlConfig.ml_app_id || Deno.env.get('ML_APP_ID') || '').trim();
+  const secretKey = (mlConfig.ml_secret_key || Deno.env.get('ML_SECRET_KEY') || '').trim();
+
+  console.log('Using ml_app_id:', appId?.slice(0, 6), 'length:', appId?.length);
+  return { appId, secretKey };
+}
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -28,14 +36,14 @@ async function saveToken(base44, data, existingId) {
   return base44.asServiceRole.entities.MercadoLivreToken.create(record);
 }
 
-async function refreshTokenIfNeeded(base44, token) {
+async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
   const tenMinutes = 10 * 60 * 1000;
   if (token.expires_at - Date.now() > tenMinutes) return token;
 
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
-    client_id: ML_APP_ID,
-    client_secret: ML_SECRET_KEY,
+    client_id: appId,
+    client_secret: secretKey,
     refresh_token: token.refresh_token,
   });
 
@@ -56,10 +64,11 @@ async function refreshTokenIfNeeded(base44, token) {
 }
 
 async function mlRequest(base44, method, path, body) {
+  const { appId, secretKey } = await getMlCredentials(base44);
   const stored = await getStoredToken(base44);
   if (!stored) throw new Error('Mercado Livre não está conectado.');
 
-  const token = await refreshTokenIfNeeded(base44, stored);
+  const token = await refreshTokenIfNeeded(base44, stored, appId, secretKey);
 
   const opts = {
     method,
@@ -93,18 +102,20 @@ Deno.serve(async (req) => {
     // ── exchange ──────────────────────────────────────────────────────────────
     if (action === 'exchange') {
       const { code, redirect_uri } = payload;
+      const { appId, secretKey } = await getMlCredentials(base44);
+
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
-        client_id: ML_APP_ID,
-        client_secret: ML_SECRET_KEY,
+        client_id: appId,
+        client_secret: secretKey,
         code,
         redirect_uri,
       });
 
       console.log('exchange params:', {
         grant_type: 'authorization_code',
-        client_id: ML_APP_ID,
-        client_id_length: ML_APP_ID?.length,
+        client_id: appId,
+        client_id_length: appId?.length,
         redirect_uri,
         code_prefix: code?.slice(0, 10),
       });
@@ -171,7 +182,6 @@ Deno.serve(async (req) => {
       const { listing } = payload;
       const data = await mlRequest(base44, 'POST', '/items', listing);
 
-      // Salva na entidade MarketplaceListing
       if (data.id && payload.product_id) {
         await base44.asServiceRole.entities.MarketplaceListing.create({
           product_id: payload.product_id,

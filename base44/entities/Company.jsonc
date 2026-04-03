@@ -85,6 +85,14 @@
             "enabled": {
               "type": "boolean"
             },
+            "ml_app_id": {
+              "type": "string",
+              "description": "App ID (Client ID) do aplicativo no Mercado Livre"
+            },
+            "ml_secret_key": {
+              "type": "string",
+              "description": "Secret Key (Client Secret) do aplicativo no Mercado Livre"
+            },
             "access_token": {
               "type": "string"
             },

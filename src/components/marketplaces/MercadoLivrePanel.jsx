@@ -5,15 +5,15 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle2, AlertCircle, ExternalLink, LogOut, Loader2, Copy, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle, ExternalLink, LogOut, Loader2, Copy, RefreshCw, Save } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const REDIRECT_URI = 'https://classy-omni-stock-flow.base44.app/ml-callback';
-const ML_APP_ID = '510111497386242';
 
-function getMlAuthUrl() {
+function getMlAuthUrl(appId) {
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id: ML_APP_ID,
+    client_id: appId,
     redirect_uri: REDIRECT_URI,
     scope: 'offline_access read write',
   });
@@ -21,12 +21,52 @@ function getMlAuthUrl() {
 }
 
 export default function MercadoLivrePanel() {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState(null);
   const [seller, setSeller] = useState(null);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState('info');
   const [copied, setCopied] = useState(false);
+
+  // Busca a primeira empresa para pegar as credenciais
+  const { data: companies = [] } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => base44.entities.Company.list('-created_date', 100),
+  });
+
+  const company = companies[0];
+  const mlConfig = company?.marketplaces_config?.mercado_livre || {};
+
+  const [appId, setAppId] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [savingCreds, setSavingCreds] = useState(false);
+
+  useEffect(() => {
+    setAppId(mlConfig.ml_app_id || '');
+    setSecretKey(mlConfig.ml_secret_key || '');
+  }, [company]);
+
+  const handleSaveCreds = async () => {
+    if (!company) return;
+    setSavingCreds(true);
+    await base44.entities.Company.update(company.id, {
+      marketplaces_config: {
+        ...company.marketplaces_config,
+        mercado_livre: {
+          ...mlConfig,
+          ml_app_id: appId.trim(),
+          ml_secret_key: secretKey.trim(),
+          enabled: true,
+        },
+      },
+    });
+    queryClient.invalidateQueries({ queryKey: ['companies'] });
+    setMsg('Credenciais salvas com sucesso!');
+    setMsgType('success');
+    setSavingCreds(false);
+    setTimeout(() => setMsg(''), 3000);
+  };
 
   const checkStatus = async () => {
     setLoading(true);
@@ -48,7 +88,13 @@ export default function MercadoLivrePanel() {
   useEffect(() => { checkStatus(); }, []);
 
   const handleConnect = () => {
-    window.location.href = getMlAuthUrl();
+    const id = appId.trim();
+    if (!id) {
+      setMsg('Informe o App ID antes de conectar.');
+      setMsgType('error');
+      return;
+    }
+    window.location.href = getMlAuthUrl(id);
   };
 
   const handleDisconnect = async () => {
@@ -99,17 +145,32 @@ export default function MercadoLivrePanel() {
         </Alert>
       )}
 
-      {/* Campos de informação */}
+      {/* Campos editáveis de credenciais */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <Label className="text-xs text-muted-foreground">App ID (ID do Aplicativo)</Label>
-          <Input value={ML_APP_ID} readOnly className="mt-1 font-mono text-sm bg-muted" />
+          <Input
+            value={appId}
+            onChange={(e) => setAppId(e.target.value)}
+            placeholder="Ex: 510111497386242"
+            className="mt-1 font-mono text-sm"
+          />
         </div>
         <div>
           <Label className="text-xs text-muted-foreground">Chave Secreta (Client Secret)</Label>
-          <Input value="Hx4Uth2MPZ581djD8K9AxxQtNjTqLHID" readOnly className="mt-1 font-mono text-sm bg-muted" type="password" />
+          <Input
+            type="password"
+            value={secretKey}
+            onChange={(e) => setSecretKey(e.target.value)}
+            placeholder="Chave secreta do aplicativo ML"
+            className="mt-1 font-mono text-sm"
+          />
         </div>
       </div>
+      <Button size="sm" variant="outline" onClick={handleSaveCreds} disabled={savingCreds} className="gap-1.5">
+        {savingCreds ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+        Salvar Credenciais
+      </Button>
 
       <div>
         <Label className="text-xs text-muted-foreground">Link de Redirecionamento (configure no Mercado Livre Developers)</Label>

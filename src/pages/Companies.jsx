@@ -13,7 +13,7 @@ import { Building2, Plus, Check, X, Download, ShoppingBag, Copy, CheckCheck } fr
 import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import BlingPanel from '@/components/BlingPanel';
 
-const emptyMarketplace = { enabled: false, access_token: '', user_id: '', shop_id: '', seller_id: '' };
+const emptyMarketplace = { enabled: false, ml_app_id: '', ml_secret_key: '', access_token: '', user_id: '', shop_id: '', seller_id: '' };
 
 const BLING_REDIRECT_URI = 'https://classy-omni-stock-flow.base44.app/bling-callback';
 
@@ -326,27 +326,25 @@ export default function Companies() {
                     onCheckedChange={(v) => updateMarketplace('mercado_livre', 'enabled', v)}
                   />
                 </div>
-                {form.marketplaces_config.mercado_livre.enabled && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                    <div>
-                      <Label className="text-xs">App ID (ID do Aplicativo)</Label>
-                      <Input
-                        placeholder="Ex: 510111497386242"
-                        value={form.marketplaces_config.mercado_livre.user_id}
-                        onChange={(e) => updateMarketplace('mercado_livre', 'user_id', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Chave Secreta (Client Secret)</Label>
-                      <Input
-                        type="password"
-                        placeholder="Ex: Hx4Uth2MPZ581dj..."
-                        value={form.marketplaces_config.mercado_livre.access_token}
-                        onChange={(e) => updateMarketplace('mercado_livre', 'access_token', e.target.value)}
-                      />
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <Label className="text-xs">App ID (ID do Aplicativo)</Label>
+                    <Input
+                      placeholder="Ex: 510111497386242"
+                      value={form.marketplaces_config.mercado_livre.ml_app_id}
+                      onChange={(e) => updateMarketplace('mercado_livre', 'ml_app_id', e.target.value)}
+                    />
                   </div>
-                )}
+                  <div>
+                    <Label className="text-xs">Chave Secreta (Client Secret)</Label>
+                    <Input
+                      type="password"
+                      placeholder="Chave secreta do aplicativo ML"
+                      value={form.marketplaces_config.mercado_livre.ml_secret_key}
+                      onChange={(e) => updateMarketplace('mercado_livre', 'ml_secret_key', e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Shopee */}
