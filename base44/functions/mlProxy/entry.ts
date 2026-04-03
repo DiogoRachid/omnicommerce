@@ -101,6 +101,14 @@ Deno.serve(async (req) => {
         redirect_uri,
       });
 
+      console.log('exchange params:', {
+        grant_type: 'authorization_code',
+        client_id: ML_APP_ID,
+        client_id_length: ML_APP_ID?.length,
+        redirect_uri,
+        code_prefix: code?.slice(0, 10),
+      });
+
       const res = await fetch(`${ML_API}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
@@ -108,7 +116,8 @@ Deno.serve(async (req) => {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.message || data?.error || 'Erro ao trocar código');
+      console.log('exchange response:', JSON.stringify(data));
+      if (!res.ok) throw new Error(data?.message || data?.error || JSON.stringify(data));
 
       // Remove tokens antigos
       const old = await base44.asServiceRole.entities.MercadoLivreToken.list('-created_date', 10);
