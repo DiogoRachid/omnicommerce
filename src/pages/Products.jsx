@@ -413,8 +413,23 @@ export default function Products() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.Product.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    mutationFn: async (id) => {
+      // Remove movimentações de estoque vinculadas
+      const movements = await base44.entities.StockMovement.filter({ product_id: id });
+      for (const m of (movements || [])) {
+        await base44.entities.StockMovement.delete(m.id);
+      }
+      // Remove anúncios vinculados
+      const listings = await base44.entities.MarketplaceListing.filter({ product_id: id });
+      for (const l of (listings || [])) {
+        await base44.entities.MarketplaceListing.delete(l.id);
+      }
+      await base44.entities.Product.delete(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['stockMovements'] });
+    },
   });
 
   // Persist preferences
