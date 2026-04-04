@@ -213,6 +213,151 @@ Deno.serve(async (req) => {
       return Response.json(data);
     }
 
+    // ── syncListings ──────────────────────────────────────────────────────────
+    if (action === 'syncListings') {
+      const token = await getStoredToken(base44);
+      if (!token) throw new Error('Mercado Livre não está conectado.');
+
+      const userId = token.user_id;
+      let synced = 0;
+      let offset = 0;
+      const limit = 50;
+
+      while (true) {
+        const searchRes = await mlRequest(
+          base44,
+          'GET',
+          `/users/${userId}/items/search?status=active&limit=${limit}&offset=${offset}`
+        );
+
+        const itemIds = searchRes?.results || [];
+        if (itemIds.length === 0) break;
+
+        for (const itemId of itemIds) {
+          try {
+            const item = await mlRequest(base44, 'GET', `/items/${itemId}`);
+
+            const statusMap = {
+              active: 'ativo',
+              paused: 'pausado',
+              closed: 'inativo',
+              under_review: 'pendente',
+            };
+
+            const listingData = {
+              marketplace_item_id: item.id,
+              product_name: item.title,
+              marketplace: 'mercado_livre',
+              status: statusMap[item.status] || 'pendente',
+              preco_anuncio: item.price || 0,
+              url_anuncio: item.permalink,
+              ultima_sync: new Date().toISOString(),
+            };
+
+            // Verifica se já existe um registro com esse marketplace_item_id
+            const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
+              { marketplace_item_id: item.id },
+              '-created_date',
+              1
+            );
+
+            if (existing && existing.length > 0) {
+              await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, listingData);
+            } else {
+              await base44.asServiceRole.entities.MarketplaceListing.create(listingData);
+            }
+
+            synced++;
+          } catch (err) {
+            console.error(`Erro ao sincronizar item ${itemId}:`, err.message);
+          }
+        }
+
+        if (itemIds.length < limit) break;
+        offset += limit;
+      }
+
+      return Response.json({ success: true, synced });
+    }
+
+    // ── syncStock ─────────────────────────────────────────────────────────────
+    if (action === 'syncStock') {
+      const { item_id, price, available_quantity } = payload;
+
+      const body = {};
+      if (price !== undefined) body.price = Number(price);
+      if (available_quantity !== undefined) body.available_quantity = Number(available_quantity);
+
+      const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, body);
+
+      // Atualiza o registro local
+      const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
+        { marketplace_item_id: item_id },
+        '-created_date',
+        1
+      );
+      if (existing && existing.length > 0) {
+        const updateData = { ultima_sync: new Date().toISOString() };
+        if (price !== undefined) updateData.preco_anuncio = Number(price);
+        await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, updateData);
+      }
+
+      return Response.json({ success: true, data });
+    }
+
+    // ── pauseListing ──────────────────────────────────────────────────────────
+    if (action === 'pauseListing') {
+      const { item_id } = payload;
+      const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, { status: 'paused' });
+
+      const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
+        { marketplace_item_id: item_id },
+        '-created_date',
+        1
+      );
+      if (existing && existing.length > 0) {
+        await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, {
+          status: 'pausado',
+          ultima_sync: new Date().toISOString(),
+        });
+      }
+
+      return Response.json({ success: true, data });
+    }
+
+    // ── reactivateListing ─────────────────────────────────────────────────────
+    if (action === 'reactivateListing') {
+      const { item_id } = payload;
+      const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, { status: 'active' });
+
+      const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
+        { marketplace_item_id: item_id },
+        '-created_date',
+        1
+      );
+      if (existing && existing.length > 0) {
+        await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, {
+          status: 'ativo',
+          ultima_sync: new Date().toISOString(),
+        });
+      }
+
+      return Response.json({ success: true, data });
+    }
+
+    // ── getOrders ─────────────────────────────────────────────────────────────
+    if (action === 'getOrders') {
+      const { status: orderStatus } = payload;
+      const token = await getStoredToken(base44);
+      if (!token) throw new Error('Mercado Livre não está conectado.');
+
+      let path = `/orders/search?seller=${token.user_id}&sort=date_desc&limit=50`;
+      if (orderStatus) path += `&order.status=${orderStatus}`;
+
+      const data = await mlRequest(base44, 'GET', path);
+      return Response.json(data);
+    }
+
     return Response.json({ error: `Action desconhecida: ${action}` }, { status: 400 });
 
   } catch (error) {
