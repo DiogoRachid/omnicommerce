@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, Loader2, AlertCircle } from 'lucide-react';
+import { Upload, Loader2, AlertCircle, CheckCircle2, Search } from 'lucide-react';
 
 const MP_NAMES = { mercado_livre: 'Mercado Livre', shopee: 'Shopee', amazon: 'Amazon' };
 
@@ -33,6 +35,15 @@ export default function ExportProducts({ companies, selectedCompany }) {
   const [conflictQueue, setConflictQueue] = useState([]);
   const [currentConflict, setCurrentConflict] = useState(null);
   const [exportLog, setExportLog] = useState([]);
+
+  // ── Estado do modal de publicação ML ─────────────────────────────────────
+  const [mlPublishProduct, setMlPublishProduct] = useState(null);
+  const [mlForm, setMlForm] = useState({ title: '', price: '', quantity: '', category_id: '', category_name: '' });
+  const [mlCategorySearch, setMlCategorySearch] = useState('');
+  const [mlCategories, setMlCategories] = useState([]);
+  const [mlSearching, setMlSearching] = useState(false);
+  const [mlPublishing, setMlPublishing] = useState(false);
+  const [mlPublishMsg, setMlPublishMsg] = useState(null);
 
   const { data: products = [] } = useQuery({
     queryKey: ['products', selectedCompany],
@@ -142,8 +153,78 @@ export default function ExportProducts({ companies, selectedCompany }) {
     }
   };
 
+  // ── Publicar no ML ────────────────────────────────────────────────────────
+  const openMlPublish = (p) => {
+    setMlPublishProduct(p);
+    setMlForm({
+      title: p.nome || '',
+      price: p.preco_venda ? String(p.preco_venda) : '',
+      quantity: p.estoque_atual ? String(p.estoque_atual) : '1',
+      category_id: '',
+      category_name: '',
+    });
+    setMlCategories([]);
+    setMlCategorySearch('');
+    setMlPublishMsg(null);
+  };
+
+  const handleMlCategorySearch = async () => {
+    if (!mlCategorySearch.trim()) return;
+    setMlSearching(true);
+    setMlCategories([]);
+    try {
+      const res = await base44.functions.invoke('mlProxy', {
+        action: 'getCategories',
+        query: mlCategorySearch.trim(),
+      });
+      setMlCategories(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      setMlPublishMsg({ type: 'error', text: 'Erro ao buscar categorias: ' + e.message });
+    }
+    setMlSearching(false);
+  };
+
+  const handleMlPublish = async () => {
+    if (!mlForm.title.trim()) return setMlPublishMsg({ type: 'error', text: 'Informe o título do anúncio.' });
+    if (!mlForm.price || isNaN(Number(mlForm.price))) return setMlPublishMsg({ type: 'error', text: 'Informe um preço válido.' });
+    if (!mlForm.category_id) return setMlPublishMsg({ type: 'error', text: 'Selecione uma categoria.' });
+
+    setMlPublishing(true);
+    setMlPublishMsg(null);
+    try {
+      const res = await base44.functions.invoke('mlProxy', {
+        action: 'createListing',
+        product_id: mlPublishProduct.id,
+        product_name: mlPublishProduct.nome,
+        company_id: mlPublishProduct.company_id,
+        listing: {
+          title: mlForm.title.trim(),
+          price: Number(mlForm.price),
+          available_quantity: Number(mlForm.quantity) || 1,
+          category_id: mlForm.category_id,
+          listing_type_id: 'gold_special',
+          condition: 'new',
+          currency_id: 'BRL',
+        },
+      });
+
+      if (res.data?.id) {
+        setMlPublishMsg({ type: 'success', text: `Anúncio publicado! ID: ${res.data.id}` });
+        await logAction('exportacao', 'sucesso', mlPublishProduct, `Publicado no ML. ID: ${res.data.id}`, { ml_id: res.data.id });
+        queryClient.invalidateQueries({ queryKey: ['listings'] });
+        queryClient.invalidateQueries({ queryKey: ['listings', selectedCompany] });
+      } else {
+        throw new Error(res.data?.error || 'Resposta inesperada da API');
+      }
+    } catch (e) {
+      setMlPublishMsg({ type: 'error', text: 'Erro ao publicar: ' + e.message });
+    }
+    setMlPublishing(false);
+  };
+
   return (
     <div className="space-y-4">
+      {/* Filtros */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -151,7 +232,7 @@ export default function ExportProducts({ companies, selectedCompany }) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1 block">Marketplace destino</label>
               <Select value={filters.marketplace} onValueChange={v => setFilters(f => ({ ...f, marketplace: v }))}>
@@ -179,16 +260,12 @@ export default function ExportProducts({ companies, selectedCompany }) {
         </CardContent>
       </Card>
 
+      {/* Tabela */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-sm">{filtered.length} produtos — {selectedCount} selecionados</CardTitle>
-            <Button
-              onClick={handleExport}
-              disabled={selectedCount === 0 || exporting}
-              className="gap-2"
-              size="sm"
-            >
+            <Button onClick={handleExport} disabled={selectedCount === 0 || exporting} className="gap-2" size="sm">
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               Exportar selecionados ({selectedCount})
             </Button>
@@ -209,12 +286,13 @@ export default function ExportProducts({ companies, selectedCompany }) {
                 <TableHead>Status</TableHead>
                 <TableHead>Marketplace</TableHead>
                 <TableHead>Última Sync</TableHead>
+                <TableHead className="w-28"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                     Nenhum produto ativo encontrado.
                   </TableCell>
                 </TableRow>
@@ -242,6 +320,21 @@ export default function ExportProducts({ companies, selectedCompany }) {
                     <TableCell className="text-xs text-muted-foreground">
                       {listing?.ultima_sync ? new Date(listing.ultima_sync).toLocaleDateString('pt-BR') : '-'}
                     </TableCell>
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      {filters.marketplace === 'mercado_livre' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-[11px] h-7 gap-1 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
+                          onClick={() => openMlPublish(p)}
+                        >
+                          <div className="w-3.5 h-3.5 rounded bg-yellow-400 flex items-center justify-center shrink-0">
+                            <span className="text-black text-[6px] font-bold">ML</span>
+                          </div>
+                          Publicar
+                        </Button>
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -250,6 +343,7 @@ export default function ExportProducts({ companies, selectedCompany }) {
         </div>
       </Card>
 
+      {/* Log */}
       {exportLog.length > 0 && (
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm">Log de Exportação</CardTitle></CardHeader>
@@ -266,7 +360,103 @@ export default function ExportProducts({ companies, selectedCompany }) {
         </Card>
       )}
 
-      {/* Conflict Dialog */}
+      {/* ── Modal publicar no ML ──────────────────────────────────────────── */}
+      <Dialog open={!!mlPublishProduct && !currentConflict} onOpenChange={(open) => { if (!open && !mlPublishing) setMlPublishProduct(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded bg-yellow-400 flex items-center justify-center shrink-0">
+                <span className="text-black text-[9px] font-bold">ML</span>
+              </div>
+              Publicar no Mercado Livre
+            </DialogTitle>
+          </DialogHeader>
+
+          {mlPublishProduct && (
+            <div className="space-y-4 py-1">
+              {mlPublishMsg && (
+                <Alert className={mlPublishMsg.type === 'success' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}>
+                  {mlPublishMsg.type === 'success'
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    : <AlertCircle className="h-4 w-4 text-red-600" />}
+                  <AlertDescription className={mlPublishMsg.type === 'success' ? 'text-green-800' : 'text-red-800'}>
+                    {mlPublishMsg.text}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Título do anúncio</Label>
+                <Input className="mt-1" value={mlForm.title} onChange={e => setMlForm(f => ({ ...f, title: e.target.value }))} placeholder="Título que aparecerá no ML" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Preço (R$)</Label>
+                  <Input className="mt-1" type="number" min="0" step="0.01" value={mlForm.price} onChange={e => setMlForm(f => ({ ...f, price: e.target.value }))} placeholder="0,00" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Quantidade disponível</Label>
+                  <Input className="mt-1" type="number" min="1" value={mlForm.quantity} onChange={e => setMlForm(f => ({ ...f, quantity: e.target.value }))} placeholder="1" />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs text-muted-foreground">Categoria do ML</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    value={mlCategorySearch}
+                    onChange={e => setMlCategorySearch(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleMlCategorySearch()}
+                    placeholder="Ex: Smartphone, Tênis, Notebook..."
+                    className="flex-1"
+                  />
+                  <Button variant="outline" size="sm" onClick={handleMlCategorySearch} disabled={mlSearching} className="gap-1.5 shrink-0">
+                    {mlSearching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                    Buscar
+                  </Button>
+                </div>
+
+                {mlForm.category_name && (
+                  <p className="text-xs text-green-700 mt-1.5 font-medium">✓ {mlForm.category_name}</p>
+                )}
+
+                {mlCategories.length > 0 && (
+                  <div className="mt-2 border rounded-lg divide-y max-h-40 overflow-y-auto">
+                    {mlCategories.map(cat => (
+                      <button
+                        key={cat.category_id}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors"
+                        onClick={() => {
+                          setMlForm(f => ({ ...f, category_id: cat.category_id, category_name: cat.category_name || cat.domain_name }));
+                          setMlCategories([]);
+                        }}
+                      >
+                        <span className="font-medium">{cat.category_name || cat.domain_name}</span>
+                        <span className="text-muted-foreground ml-2">{cat.category_id}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setMlPublishProduct(null)} disabled={mlPublishing}>Cancelar</Button>
+            <Button
+              onClick={handleMlPublish}
+              disabled={mlPublishing || mlPublishMsg?.type === 'success'}
+              className="gap-2 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold"
+            >
+              {mlPublishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              Publicar no ML
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal conflito exportação ─────────────────────────────────────── */}
       <Dialog open={!!currentConflict} onOpenChange={() => {}}>
         <DialogContent>
           <DialogHeader>
