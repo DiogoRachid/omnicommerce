@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Download, Search, Loader2, AlertCircle } from 'lucide-react';
+import { Download, Search, Loader2, AlertCircle, RefreshCw, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { askBlingAgentJSON } from '@/lib/blingAgent';
 
 const MP_NAMES = { mercado_livre: 'Mercado Livre', shopee: 'Shopee', amazon: 'Amazon' };
@@ -22,6 +22,14 @@ const STATUS_LABELS = {
   nao_alterado: { label: 'Não alterado', color: 'bg-gray-100 text-gray-600' },
 };
 
+const statusColors = {
+  ativo: 'default',
+  pausado: 'secondary',
+  inativo: 'outline',
+  erro: 'destructive',
+  pendente: 'secondary',
+};
+
 function StatusBadge({ status }) {
   const s = STATUS_LABELS[status] || STATUS_LABELS.novo;
   return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>;
@@ -29,6 +37,12 @@ function StatusBadge({ status }) {
 
 export default function ImportProducts({ companies }) {
   const queryClient = useQueryClient();
+
+  // ── Estado ML Sync ────────────────────────────────────────────────────────
+  const [mlSyncing, setMlSyncing] = useState(false);
+  const [mlSyncMsg, setMlSyncMsg] = useState(null); // { type: 'success'|'error', text }
+
+  // ── Estado importação Bling ───────────────────────────────────────────────
   const [filters, setFilters] = useState({ marketplace: 'all', company: 'all', sku: '', ean: '', nome: '' });
   const [mpProducts, setMpProducts] = useState([]);
   const [selected, setSelected] = useState({});
@@ -43,6 +57,31 @@ export default function ImportProducts({ companies }) {
     queryFn: () => base44.entities.Product.list('-created_date', 1000),
   });
 
+  const { data: mlListings = [], refetch: refetchListings } = useQuery({
+    queryKey: ['ml-listings'],
+    queryFn: () => base44.entities.MarketplaceListing.filter({ marketplace: 'mercado_livre' }, '-ultima_sync', 200),
+  });
+
+  // ── Sincronizar anúncios do Mercado Livre ─────────────────────────────────
+  const handleMlSync = async () => {
+    setMlSyncing(true);
+    setMlSyncMsg(null);
+    try {
+      const res = await base44.functions.invoke('mlProxy', { action: 'syncListings' });
+      if (res.data?.success) {
+        setMlSyncMsg({ type: 'success', text: `${res.data.synced} anúncio(s) sincronizado(s) com sucesso!` });
+        refetchListings();
+        queryClient.invalidateQueries({ queryKey: ['listings'] });
+      } else {
+        throw new Error(res.data?.error || 'Erro ao sincronizar');
+      }
+    } catch (e) {
+      setMlSyncMsg({ type: 'error', text: e.message || 'Erro inesperado ao sincronizar.' });
+    }
+    setMlSyncing(false);
+  };
+
+  // ── Importação Bling ──────────────────────────────────────────────────────
   const handleSearch = async () => {
     setLoading(true);
     setMpProducts([]);
@@ -104,7 +143,6 @@ export default function ImportProducts({ companies }) {
     const conflicts = toImport.filter(p => p._cadastro);
     const news = toImport.filter(p => !p._cadastro);
 
-    // Processa novos direto
     for (const p of news) {
       await createProduct(p);
       logAction('importacao', 'sucesso', p, 'Produto criado.');
@@ -150,7 +188,6 @@ export default function ImportProducts({ companies }) {
       logAction('importacao', 'sucesso', currentConflict, 'Produto não alterado.');
       setMpProducts(prev => prev.map(p => p.id === currentConflict.id ? { ...p, _cadastro_status: 'nao_alterado' } : p));
     } else {
-      // cancel — para tudo
       setConflictQueue([]);
       setCurrentConflict(null);
       return;
@@ -169,11 +206,92 @@ export default function ImportProducts({ companies }) {
 
   return (
     <div className="space-y-4">
-      {/* Filtros */}
+
+      {/* ── Sincronização Mercado Livre ───────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <Download className="w-4 h-4" /> Importar Produtos
+            <div className="w-5 h-5 rounded bg-yellow-400 flex items-center justify-center shrink-0">
+              <span className="text-black text-[8px] font-bold">ML</span>
+            </div>
+            Sincronizar Anúncios do Mercado Livre
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Busca todos os anúncios ativos da sua conta do Mercado Livre e salva no sistema para gerenciamento.
+          </p>
+
+          {mlSyncMsg && (
+            <Alert className={mlSyncMsg.type === 'success' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}>
+              {mlSyncMsg.type === 'success'
+                ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                : <AlertCircle className="h-4 w-4 text-red-600" />}
+              <AlertDescription className={mlSyncMsg.type === 'success' ? 'text-green-800' : 'text-red-800'}>
+                {mlSyncMsg.text}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <Button onClick={handleMlSync} disabled={mlSyncing} className="gap-2 bg-yellow-400 hover:bg-yellow-500 text-black font-semibold">
+            {mlSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {mlSyncing ? 'Sincronizando...' : 'Sincronizar anúncios do Mercado Livre'}
+          </Button>
+
+          {/* Lista de anúncios sincronizados */}
+          {mlListings.length > 0 && (
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground mb-2">{mlListings.length} anúncio(s) sincronizado(s)</p>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Título</TableHead>
+                      <TableHead className="text-right">Preço</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Última sync</TableHead>
+                      <TableHead className="w-10"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {mlListings.map(l => (
+                      <TableRow key={l.id}>
+                        <TableCell className="text-sm font-medium max-w-[220px] truncate">{l.product_name}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          {l.preco_anuncio ? `R$ ${Number(l.preco_anuncio).toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusColors[l.status] || 'secondary'} className="text-[10px] capitalize">
+                            {l.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {l.ultima_sync ? new Date(l.ultima_sync).toLocaleString('pt-BR') : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {l.url_anuncio && (
+                            <a href={l.url_anuncio} target="_blank" rel="noopener noreferrer">
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </Button>
+                            </a>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Importar do Bling ─────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Download className="w-4 h-4" /> Importar Produtos do Bling
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -212,7 +330,7 @@ export default function ImportProducts({ companies }) {
         </CardContent>
       </Card>
 
-      {/* Tabela */}
+      {/* Tabela de produtos Bling */}
       {mpProducts.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
