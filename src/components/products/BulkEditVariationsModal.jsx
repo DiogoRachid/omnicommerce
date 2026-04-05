@@ -1,298 +1,429 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ChevronRight, ChevronDown, Save, Loader2, Package, Layers, Palette, Hash } from 'lucide-react';
-import ProductPhotos from '@/components/products/ProductPhotos';
+import { Save, Loader2, Layers, Package, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
-// Agrupa variações pelo primeiro atributo (Cor)
-function groupByPrimary(variacoes) {
+// ── helpers ────────────────────────────────────────────────────────────────────
+
+function getAttrs(v) {
+  return (v.variacoes_atributos || '').split('|').map(s => s.trim());
+}
+
+// Retorna { cor, tamanho } a partir dos atributos
+function parseCT(v) {
+  const attrs = getAttrs(v);
+  return { cor: attrs[0] || '', tamanho: attrs[1] || '' };
+}
+
+// Extrai listas únicas ordenadas de cores e tamanhos
+function extractDimensions(variacoes) {
+  const cores = [];
+  const tamanhos = [];
+  variacoes.forEach(v => {
+    const { cor, tamanho } = parseCT(v);
+    if (cor && !cores.includes(cor)) cores.push(cor);
+    if (tamanho && !tamanhos.includes(tamanho)) tamanhos.push(tamanho);
+  });
+  return { cores, tamanhos };
+}
+
+// Monta mapa { "Cor|Tamanho": produto }
+function buildMap(variacoes) {
   const map = {};
   variacoes.forEach(v => {
-    const attrs = (v.variacoes_atributos || '').split('|').map(s => s.trim());
-    const key = attrs[0] || v.nome;
-    if (!map[key]) map[key] = [];
-    map[key].push(v);
+    const { cor, tamanho } = parseCT(v);
+    map[`${cor}|${tamanho}`] = v;
   });
   return map;
 }
 
-// Campos editáveis com labels
-const PRICE_FIELDS = [
-  { key: 'preco_custo', label: 'Preço de Custo (R$)', type: 'number' },
-  { key: 'margem_padrao', label: 'Margem (%)', type: 'number' },
-  { key: 'preco_venda', label: 'Preço de Venda (R$)', type: 'number' },
-];
+// ── Célula editável inline ────────────────────────────────────────────────────
 
-const INFO_FIELDS = [
-  { key: 'nome', label: 'Nome', type: 'text' },
-  { key: 'marca', label: 'Marca', type: 'text' },
-  { key: 'sku', label: 'SKU', type: 'text' },
-  { key: 'ean', label: 'EAN', type: 'text' },
-];
-
-const DIM_FIELDS = [
-  { key: 'peso_bruto_kg', label: 'Peso Bruto (kg)', type: 'number' },
-  { key: 'peso_liquido_kg', label: 'Peso Líquido (kg)', type: 'number' },
-  { key: 'altura_cm', label: 'Altura (cm)', type: 'number' },
-  { key: 'largura_cm', label: 'Largura (cm)', type: 'number' },
-  { key: 'comprimento_cm', label: 'Comprimento (cm)', type: 'number' },
-];
-
-function FieldsGrid({ fields, values, onChange, disabled }) {
+function EditCell({ value, onChange, type = 'text', placeholder = '' }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-      {fields.map(f => (
-        <div key={f.key}>
-          <Label className="text-xs">{f.label}</Label>
-          <Input
-            type={f.type}
-            step={f.type === 'number' ? '0.01' : undefined}
-            value={values[f.key] ?? ''}
-            onChange={e => onChange(f.key, e.target.value)}
-            disabled={disabled}
-            className="h-8 text-sm mt-1"
-          />
-        </div>
-      ))}
-    </div>
+    <Input
+      type={type}
+      step={type === 'number' ? '0.01' : undefined}
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="h-7 text-xs px-2 min-w-[80px] w-full"
+    />
   );
 }
 
-// Painel de edição de um único produto/grupo
-function EditPanel({ title, subtitle, icon: Icon, iconColor, items, onSave, saving }) {
-  const firstItem = items[0] || {};
+// ── Painel de informações básicas do produto pai ──────────────────────────────
+
+function BasicInfoPanel({ pai, saving, onSavePai }) {
   const [form, setForm] = useState({
-    nome: firstItem.nome || '',
-    marca: firstItem.marca || '',
-    sku: items.length === 1 ? (firstItem.sku || '') : '',
-    ean: items.length === 1 ? (firstItem.ean || '') : '',
-    preco_custo: firstItem.preco_custo || '',
-    margem_padrao: firstItem.margem_padrao || '',
-    preco_venda: firstItem.preco_venda || '',
-    peso_bruto_kg: firstItem.peso_bruto_kg || '',
-    peso_liquido_kg: firstItem.peso_liquido_kg || '',
-    altura_cm: firstItem.altura_cm || '',
-    largura_cm: firstItem.largura_cm || '',
-    comprimento_cm: firstItem.comprimento_cm || '',
-    fotos: firstItem.fotos || [],
+    nome: pai?.nome || '',
+    marca: pai?.marca || '',
+    descricao: pai?.descricao || '',
+    preco_custo: pai?.preco_custo || '',
+    margem_padrao: pai?.margem_padrao || '',
+    peso_bruto_kg: pai?.peso_bruto_kg || '',
+    altura_cm: pai?.altura_cm || '',
+    largura_cm: pai?.largura_cm || '',
+    comprimento_cm: pai?.comprimento_cm || '',
   });
 
-  const updateField = (key, value) => {
-    setForm(prev => {
-      const updated = { ...prev, [key]: value };
-      if ((key === 'preco_custo' || key === 'margem_padrao') && updated.preco_custo && updated.margem_padrao) {
-        const custo = parseFloat(updated.preco_custo);
-        const margem = parseFloat(updated.margem_padrao);
-        if (custo > 0 && margem > 0 && margem < 100) {
-          updated.preco_venda = parseFloat((custo / (1 - margem / 100)).toFixed(2));
-        }
-      }
-      return updated;
-    });
-  };
-
-  const handleSave = () => {
-    // Monta apenas os campos preenchidos
-    const data = {};
-    Object.entries(form).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined) {
-        if (['preco_custo', 'margem_padrao', 'preco_venda', 'peso_bruto_kg', 'peso_liquido_kg', 'altura_cm', 'largura_cm', 'comprimento_cm'].includes(k)) {
-          data[k] = parseFloat(v) || undefined;
-        } else {
-          data[k] = v;
-        }
-      }
-    });
-    onSave(items.map(i => i.id), data);
-  };
+  const f = (key, label, type = 'text') => (
+    <div>
+      <label className="text-xs text-muted-foreground font-medium">{label}</label>
+      <Input
+        type={type}
+        step={type === 'number' ? '0.01' : undefined}
+        value={form[key] ?? ''}
+        onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+        className="h-8 text-sm mt-1"
+        disabled={saving}
+      />
+    </div>
+  );
 
   return (
-    <div className="border rounded-lg p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${iconColor}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-        <div>
-          <p className="font-semibold text-sm">{title}</p>
-          {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-        </div>
-        {items.length > 1 && (
-          <Badge variant="outline" className="ml-auto text-xs">{items.length} produtos</Badge>
-        )}
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {f('nome', 'Nome do Produto')}
+        {f('marca', 'Marca')}
       </div>
-
-      <Tabs defaultValue="info">
-        <TabsList className="h-7 text-xs">
-          <TabsTrigger value="info" className="text-xs px-2 h-6">Informações</TabsTrigger>
-          <TabsTrigger value="preco" className="text-xs px-2 h-6">Preços</TabsTrigger>
-          <TabsTrigger value="dim" className="text-xs px-2 h-6">Dimensões</TabsTrigger>
-          <TabsTrigger value="fotos" className="text-xs px-2 h-6">Fotos</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="info" className="pt-3">
-          {items.length > 1 && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
-              ⚠️ Campos em branco não serão alterados. SKU e EAN só podem ser editados individualmente.
-            </p>
-          )}
-          <FieldsGrid
-            fields={items.length === 1 ? INFO_FIELDS : INFO_FIELDS.filter(f => !['sku', 'ean'].includes(f.key))}
-            values={form}
-            onChange={updateField}
-            disabled={saving}
-          />
-        </TabsContent>
-
-        <TabsContent value="preco" className="pt-3">
-          {items.length > 1 && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
-              ⚠️ O preço será aplicado em todos os {items.length} produtos do grupo.
-            </p>
-          )}
-          <FieldsGrid fields={PRICE_FIELDS} values={form} onChange={updateField} disabled={saving} />
-        </TabsContent>
-
-        <TabsContent value="dim" className="pt-3">
-          <FieldsGrid fields={DIM_FIELDS} values={form} onChange={updateField} disabled={saving} />
-        </TabsContent>
-
-        <TabsContent value="fotos" className="pt-3">
-          {items.length > 1 && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-3">
-              ⚠️ As fotos serão aplicadas em todos os {items.length} produtos do grupo.
-            </p>
-          )}
-          <ProductPhotos fotos={form.fotos || []} onChange={f => setForm(prev => ({ ...prev, fotos: f }))} />
-        </TabsContent>
-      </Tabs>
-
+      <div>
+        <label className="text-xs text-muted-foreground font-medium">Descrição</label>
+        <textarea
+          className="w-full mt-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm min-h-[80px] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          value={form.descricao ?? ''}
+          onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))}
+          disabled={saving}
+        />
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {f('preco_custo', 'Custo (R$)', 'number')}
+        {f('margem_padrao', 'Margem (%)', 'number')}
+        {f('peso_bruto_kg', 'Peso Bruto (kg)', 'number')}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {f('altura_cm', 'Altura (cm)', 'number')}
+        {f('largura_cm', 'Largura (cm)', 'number')}
+        {f('comprimento_cm', 'Comprimento (cm)', 'number')}
+      </div>
       <div className="flex justify-end">
-        <Button size="sm" onClick={handleSave} disabled={saving} className="gap-2">
+        <Button size="sm" onClick={() => onSavePai(form)} disabled={saving} className="gap-2">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          {saving ? 'Salvando...' : `Salvar${items.length > 1 ? ` (${items.length} produtos)` : ''}`}
+          Salvar Produto Pai
         </Button>
       </div>
     </div>
   );
 }
 
+// ── Grade de variações estilo Shopee ─────────────────────────────────────────
+
+function VariationsGrid({ variacoes, saving, onSaveVariations }) {
+  const { cores, tamanhos } = useMemo(() => extractDimensions(variacoes), [variacoes]);
+  const prodMap = useMemo(() => buildMap(variacoes), [variacoes]);
+
+  // Estado local: { "Cor|Tamanho": { preco_venda, estoque_atual, sku, ean } }
+  const [edits, setEdits] = useState(() => {
+    const init = {};
+    variacoes.forEach(v => {
+      const { cor, tamanho } = parseCT(v);
+      init[`${cor}|${tamanho}`] = {
+        preco_venda: v.preco_venda ?? '',
+        estoque_atual: v.estoque_atual ?? '',
+        sku: v.sku ?? '',
+        ean: v.ean ?? '',
+      };
+    });
+    return init;
+  });
+
+  const setCell = (cor, tamanho, field, value) => {
+    setEdits(prev => ({
+      ...prev,
+      [`${cor}|${tamanho}`]: { ...prev[`${cor}|${tamanho}`], [field]: value },
+    }));
+  };
+
+  // Aplica preço/estoque a toda uma cor
+  const applyToColor = (cor, field, value) => {
+    setEdits(prev => {
+      const next = { ...prev };
+      tamanhos.forEach(t => {
+        const key = `${cor}|${t}`;
+        if (prodMap[key]) next[key] = { ...next[key], [field]: value };
+      });
+      return next;
+    });
+  };
+
+  // Aplica preço/estoque a toda uma coluna (tamanho)
+  const applyToSize = (tamanho, field, value) => {
+    setEdits(prev => {
+      const next = { ...prev };
+      cores.forEach(c => {
+        const key = `${c}|${tamanho}`;
+        if (prodMap[key]) next[key] = { ...next[key], [field]: value };
+      });
+      return next;
+    });
+  };
+
+  const handleSave = () => {
+    const updates = [];
+    Object.entries(edits).forEach(([key, vals]) => {
+      const prod = prodMap[key];
+      if (!prod) return;
+      updates.push({ id: prod.id, data: {
+        preco_venda: vals.preco_venda !== '' ? parseFloat(vals.preco_venda) : undefined,
+        estoque_atual: vals.estoque_atual !== '' ? parseInt(vals.estoque_atual) : undefined,
+        sku: vals.sku || undefined,
+        ean: vals.ean || undefined,
+      }});
+    });
+    onSaveVariations(updates);
+  };
+
+  if (cores.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground text-sm">
+        <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+        Nenhuma variação encontrada com atributos de cor/tamanho.
+      </div>
+    );
+  }
+
+  // Modo sem tamanho (apenas cor)
+  const hasTamanho = tamanhos.length > 0 && tamanhos.some(t => t !== '');
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-muted">
+              <th className="border border-border px-3 py-2 text-left font-semibold min-w-[120px]">Cor</th>
+              {hasTamanho && (
+                <th className="border border-border px-3 py-2 text-left font-semibold min-w-[80px]">Tamanho</th>
+              )}
+              <th className="border border-border px-3 py-2 text-center font-semibold min-w-[110px]">Preço (R$)</th>
+              <th className="border border-border px-3 py-2 text-center font-semibold min-w-[90px]">Estoque</th>
+              <th className="border border-border px-3 py-2 text-center font-semibold min-w-[110px]">SKU</th>
+              <th className="border border-border px-3 py-2 text-center font-semibold min-w-[120px]">EAN</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cores.map(cor => {
+              const rows = hasTamanho ? tamanhos : [''];
+              return rows.map((tamanho, tidx) => {
+                const key = `${cor}|${tamanho}`;
+                const prod = prodMap[key];
+                const cell = edits[key] || {};
+                const isFirstRow = tidx === 0;
+
+                return (
+                  <tr key={key} className={prod ? 'hover:bg-accent/30' : 'bg-muted/30 opacity-50'}>
+                    {/* Cor — só na primeira linha desse grupo */}
+                    {isFirstRow && (
+                      <td
+                        rowSpan={hasTamanho ? tamanhos.length : 1}
+                        className="border border-border px-3 py-2 align-middle"
+                      >
+                        <div className="flex flex-col items-center gap-2">
+                          {prod?.fotos?.[0] ? (
+                            <img src={prod.fotos[0]} className="w-12 h-12 rounded object-cover border" alt={cor} />
+                          ) : (
+                            <div className="w-12 h-12 rounded border bg-muted flex items-center justify-center">
+                              <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                          )}
+                          <span className="font-semibold text-[11px] text-center leading-tight">{cor}</span>
+                          {hasTamanho && (
+                            <div className="flex flex-col gap-1 w-full mt-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="Preço p/ todos"
+                                className="h-6 text-[10px] px-1.5 rounded border border-input bg-transparent focus:outline-none focus:ring-1 focus:ring-ring w-full"
+                                onChange={e => applyToColor(cor, 'preco_venda', e.target.value)}
+                              />
+                              <input
+                                type="number"
+                                placeholder="Estoque p/ todos"
+                                className="h-6 text-[10px] px-1.5 rounded border border-input bg-transparent focus:outline-none focus:ring-1 focus:ring-ring w-full"
+                                onChange={e => applyToColor(cor, 'estoque_atual', e.target.value)}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* Tamanho */}
+                    {hasTamanho && (
+                      <td className="border border-border px-3 py-2 text-center font-medium">
+                        {tamanho || '—'}
+                        {!prod && <div className="text-[10px] text-muted-foreground">N/D</div>}
+                      </td>
+                    )}
+
+                    {/* Preço */}
+                    <td className="border border-border px-2 py-1.5">
+                      {prod ? (
+                        <EditCell
+                          type="number"
+                          placeholder="0,00"
+                          value={cell.preco_venda}
+                          onChange={v => setCell(cor, tamanho, 'preco_venda', v)}
+                        />
+                      ) : <span className="text-muted-foreground text-center block">—</span>}
+                    </td>
+
+                    {/* Estoque */}
+                    <td className="border border-border px-2 py-1.5">
+                      {prod ? (
+                        <EditCell
+                          type="number"
+                          placeholder="0"
+                          value={cell.estoque_atual}
+                          onChange={v => setCell(cor, tamanho, 'estoque_atual', v)}
+                        />
+                      ) : <span className="text-muted-foreground text-center block">—</span>}
+                    </td>
+
+                    {/* SKU */}
+                    <td className="border border-border px-2 py-1.5">
+                      {prod ? (
+                        <EditCell
+                          placeholder="SKU"
+                          value={cell.sku}
+                          onChange={v => setCell(cor, tamanho, 'sku', v)}
+                        />
+                      ) : <span className="text-muted-foreground text-center block">—</span>}
+                    </td>
+
+                    {/* EAN */}
+                    <td className="border border-border px-2 py-1.5">
+                      {prod ? (
+                        <EditCell
+                          placeholder="EAN"
+                          value={cell.ean}
+                          onChange={v => setCell(cor, tamanho, 'ean', v)}
+                        />
+                      ) : <span className="text-muted-foreground text-center block">—</span>}
+                    </td>
+                  </tr>
+                );
+              });
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          {variacoes.length} variações · {cores.length} cores{hasTamanho ? ` · ${tamanhos.length} tamanhos` : ''}
+        </p>
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Salvando...' : `Salvar ${variacoes.length} variações`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal principal ───────────────────────────────────────────────────────────
+
 export default function BulkEditVariationsModal({ open, onClose, pai, variacoes }) {
   const queryClient = useQueryClient();
-  const [savingGroup, setSavingGroup] = useState(null); // null | 'pai' | cor string | 'ind_<id>'
-  const [expandedCors, setExpandedCors] = useState({});
+  const [savingPai, setSavingPai] = useState(false);
+  const [savingVars, setSavingVars] = useState(false);
 
-  const grouped = useMemo(() => groupByPrimary(variacoes), [variacoes]);
-
-  const handleSave = async (ids, data, groupKey) => {
-    setSavingGroup(groupKey);
+  const handleSavePai = async (form) => {
+    setSavingPai(true);
     try {
-      const cleanData = {};
-      Object.entries(data).forEach(([k, v]) => {
-        if (v !== undefined && v !== null && v !== '') cleanData[k] = v;
+      const data = {};
+      Object.entries(form).forEach(([k, v]) => {
+        if (v !== '' && v !== null && v !== undefined) {
+          if (['preco_custo', 'margem_padrao', 'peso_bruto_kg', 'altura_cm', 'largura_cm', 'comprimento_cm'].includes(k)) {
+            data[k] = parseFloat(v);
+          } else {
+            data[k] = v;
+          }
+        }
       });
-
-      for (const id of ids) {
-        await base44.entities.Product.update(id, cleanData);
-      }
-
+      await base44.entities.Product.update(pai.id, data);
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${ids.length > 1 ? `${ids.length} produtos atualizados` : 'Produto atualizado'} com sucesso!`);
+      toast.success('Produto pai atualizado com sucesso!');
     } catch (e) {
       toast.error('Erro ao salvar: ' + e.message);
     }
-    setSavingGroup(null);
+    setSavingPai(false);
   };
 
-  const toggleCor = (cor) => setExpandedCors(prev => ({ ...prev, [cor]: !prev[cor] }));
+  const handleSaveVariations = async (updates) => {
+    setSavingVars(true);
+    try {
+      for (const { id, data } of updates) {
+        const clean = {};
+        Object.entries(data).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
+        if (Object.keys(clean).length > 0) {
+          await base44.entities.Product.update(id, clean);
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`${updates.length} variações atualizadas com sucesso!`);
+    } catch (e) {
+      toast.error('Erro ao salvar variações: ' + e.message);
+    }
+    setSavingVars(false);
+  };
 
   if (!pai) return null;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 text-base">
             <Layers className="w-5 h-5 text-orange-500" />
-            Editar Variações — {pai.nome}
+            {pai.nome}
+            <Badge variant="outline" className="text-[10px] ml-1">{variacoes.length} variações</Badge>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 pt-1">
-          {/* Editar TODOS (produto pai inteiro) */}
-          <EditPanel
-            title="Editar todo o produto"
-            subtitle={`Aplica em todas as ${variacoes.length} variações`}
-            icon={Layers}
-            iconColor="bg-orange-100 text-orange-600"
-            items={variacoes}
-            onSave={(ids, data) => handleSave(ids, data, 'pai')}
-            saving={savingGroup === 'pai'}
-          />
+        <Tabs defaultValue="variacoes" className="mt-1">
+          <TabsList>
+            <TabsTrigger value="variacoes" className="gap-1.5">
+              <Layers className="w-3.5 h-3.5" /> Variações
+            </TabsTrigger>
+            <TabsTrigger value="basico" className="gap-1.5">
+              <Package className="w-3.5 h-3.5" /> Informações Básicas
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Por cor */}
-          <div className="space-y-2">
-            <p className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-              <Palette className="w-4 h-4" /> Editar por Cor
-            </p>
-            {Object.entries(grouped).map(([cor, vars]) => (
-              <div key={cor} className="border rounded-lg overflow-hidden">
-                <button
-                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-orange-50 hover:bg-orange-100 transition-colors text-left"
-                  onClick={() => toggleCor(cor)}
-                >
-                  {expandedCors[cor] ? <ChevronDown className="w-4 h-4 text-orange-600" /> : <ChevronRight className="w-4 h-4 text-orange-600" />}
-                  <span className="font-semibold text-sm text-orange-800">🎨 {cor}</span>
-                  <Badge variant="outline" className="text-[10px] ml-1">{vars.length} numerações</Badge>
-                </button>
+          <TabsContent value="variacoes" className="pt-4">
+            <VariationsGrid
+              variacoes={variacoes}
+              saving={savingVars}
+              onSaveVariations={handleSaveVariations}
+            />
+          </TabsContent>
 
-                {expandedCors[cor] && (
-                  <div className="p-3 space-y-3">
-                    {/* Editar toda a cor */}
-                    <EditPanel
-                      title={`Toda a cor ${cor}`}
-                      subtitle={`Aplica em todas as ${vars.length} numerações`}
-                      icon={Palette}
-                      iconColor="bg-orange-100 text-orange-600"
-                      items={vars}
-                      onSave={(ids, data) => handleSave(ids, data, `cor_${cor}`)}
-                      saving={savingGroup === `cor_${cor}`}
-                    />
-
-                    {/* Editar individual */}
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                        <Hash className="w-3.5 h-3.5" /> Editar Numeração Individual
-                      </p>
-                      {vars.map(v => {
-                        const attrs = (v.variacoes_atributos || '').split('|').map(s => s.trim());
-                        const numeracao = attrs.length > 1 ? attrs.filter(a => a !== cor).join(' | ') : attrs[0];
-                        return (
-                          <EditPanel
-                            key={v.id}
-                            title={numeracao || v.nome}
-                            subtitle={`SKU: ${v.sku || '-'}`}
-                            icon={Package}
-                            iconColor="bg-slate-100 text-slate-600"
-                            items={[v]}
-                            onSave={(ids, data) => handleSave(ids, data, `ind_${v.id}`)}
-                            saving={savingGroup === `ind_${v.id}`}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+          <TabsContent value="basico" className="pt-4">
+            <BasicInfoPanel
+              pai={pai}
+              saving={savingPai}
+              onSavePai={handleSavePai}
+            />
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
