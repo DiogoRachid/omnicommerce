@@ -27,6 +27,7 @@ import BlingCallback from '@/pages/BlingCallback';
 import MlCallback from '@/pages/MlCallback';
 import ProductOrganizer from '@/pages/ProductOrganizer';
 import FinancialDashboard from '@/pages/FinancialDashboard';
+import MarketplaceFields from '@/pages/MarketplaceFields';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -70,6 +71,7 @@ const AuthenticatedApp = () => {
         <Route path="/configuracoes" element={<Settings />} />
         <Route path="/organizar-produtos" element={<ProductOrganizer />} />
         <Route path="/financeiro" element={<FinancialDashboard />} />
+        <Route path="/configuracoes/campos-marketplace" element={<MarketplaceFields />} />    
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
       <Route path="/ml-callback" element={<MlCallback />} />
