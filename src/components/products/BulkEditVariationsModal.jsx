@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Loader2, Layers, Package, Image as ImageIcon } from 'lucide-react';
+import { Save, Loader2, Layers, Package, Image as ImageIcon, X, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -122,10 +122,53 @@ function BasicInfoPanel({ pai, saving, onSavePai }) {
   );
 }
 
+// ── TagInput: edita lista de opções como tags ─────────────────────────────────
+
+function TagInput({ label, tags, onAdd, onRemove }) {
+  const [input, setInput] = useState('');
+
+  const handleKey = (e) => {
+    if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
+      e.preventDefault();
+      const val = input.trim().toUpperCase();
+      if (!tags.includes(val)) onAdd(val);
+      setInput('');
+    }
+  };
+
+  return (
+    <div className="flex items-start gap-3 py-2 border-b border-border last:border-0">
+      <span className="text-sm text-muted-foreground w-24 shrink-0 pt-1.5">{label}</span>
+      <div className="flex flex-wrap items-center gap-1.5 flex-1 min-h-[36px] rounded-md border border-input bg-background px-2 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+        {tags.map(tag => (
+          <span key={tag} className="inline-flex items-center gap-1 bg-muted border border-border rounded px-2 py-0.5 text-xs font-medium">
+            {tag}
+            <button onClick={() => onRemove(tag)} className="hover:text-destructive transition-colors">
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Digite e pressione Enter..."
+          className="flex-1 min-w-[120px] text-xs bg-transparent outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Grade de variações estilo Shopee ─────────────────────────────────────────
 
-function VariationsGrid({ variacoes, saving, onSaveVariations }) {
-  const { cores, tamanhos } = useMemo(() => extractDimensions(variacoes), [variacoes]);
+function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtributos }) {
+  const { cores: coresInit, tamanhos: tamanhosInit } = useMemo(() => extractDimensions(variacoes), [variacoes]);
+
+  // Tags editáveis de cor e tamanho
+  const [cores, setCores] = useState(coresInit);
+  const [tamanhos, setTamanhos] = useState(tamanhosInit);
+
   const prodMap = useMemo(() => buildMap(variacoes), [variacoes]);
 
   // Estado local: { "Cor|Tamanho": { preco_venda, estoque_atual, sku, ean } }
@@ -189,20 +232,36 @@ function VariationsGrid({ variacoes, saving, onSaveVariations }) {
     onSaveVariations(updates);
   };
 
-  if (cores.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground text-sm">
-        <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-        Nenhuma variação encontrada com atributos de cor/tamanho.
-      </div>
-    );
-  }
-
   // Modo sem tamanho (apenas cor)
   const hasTamanho = tamanhos.length > 0 && tamanhos.some(t => t !== '');
 
   return (
     <div className="space-y-4">
+      {/* Painel de atributos (Cor / Tamanho) */}
+      <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-0">
+        <TagInput
+          label="Cor"
+          tags={cores}
+          onAdd={v => setCores(p => [...p, v])}
+          onRemove={v => setCores(p => p.filter(c => c !== v))}
+        />
+        <TagInput
+          label="Tamanho"
+          tags={tamanhos}
+          onAdd={v => setTamanhos(p => [...p, v])}
+          onRemove={v => setTamanhos(p => p.filter(t => t !== v))}
+        />
+        <p className="text-[10px] text-muted-foreground pt-2">
+          💡 Edite as opções acima e clique em "Salvar variações" para aplicar. Novas combinações serão criadas automaticamente.
+        </p>
+      </div>
+
+      {cores.length === 0 && tamanhos.length === 0 && (
+        <div className="text-center py-6 text-muted-foreground text-sm">
+          <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+          Adicione cores e tamanhos acima para ver a grade de variações.
+        </div>
+      )}
       <div className="overflow-x-auto rounded-lg border">
         <table className="w-full text-xs border-collapse">
           <thead>
@@ -325,15 +384,17 @@ function VariationsGrid({ variacoes, saving, onSaveVariations }) {
         </table>
       </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {variacoes.length} variações · {cores.length} cores{hasTamanho ? ` · ${tamanhos.length} tamanhos` : ''}
-        </p>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? 'Salvando...' : `Salvar ${variacoes.length} variações`}
-        </Button>
-      </div>
+      {cores.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {variacoes.length} variações · {cores.length} cores{hasTamanho ? ` · ${tamanhos.length} tamanhos` : ''}
+          </p>
+          <Button onClick={handleSave} disabled={saving} className="gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Salvando...' : `Salvar ${variacoes.length} variações`}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -411,6 +472,7 @@ export default function BulkEditVariationsModal({ open, onClose, pai, variacoes 
           <TabsContent value="variacoes" className="pt-4">
             <VariationsGrid
               variacoes={variacoes}
+              pai={pai}
               saving={savingVars}
               onSaveVariations={handleSaveVariations}
             />

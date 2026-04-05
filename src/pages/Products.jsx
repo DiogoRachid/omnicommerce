@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
-  Trash2, ChevronRight, ChevronDown, Layers, Sparkles, Bot, PenSquare
+  Trash2, ChevronRight, ChevronDown, Layers, Sparkles, Bot
 } from 'lucide-react';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
 import { getCategoriaLabel, formatBRL, calcTributos } from '@/lib/productCategories';
@@ -167,11 +167,6 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
           <Link to={`/produtos/editar/${p.id}`}>
             <Button variant="ghost" size="icon" className="h-7 w-7"><Edit className="w-3 h-3" /></Button>
           </Link>
-          {isPai && onBulkEdit && (
-            <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-600 hover:bg-orange-50" title="Editar variações em massa" onClick={() => onBulkEdit(p)}>
-              <PenSquare className="w-3.5 h-3.5" />
-            </Button>
-          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggle(p.id, p.ativo)}>
             {p.ativo ? <ToggleRight className="w-3.5 h-3.5 text-primary" /> : <ToggleLeft className="w-3.5 h-3.5 text-muted-foreground" />}
           </Button>

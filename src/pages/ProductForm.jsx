@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Plus, X } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Layers } from 'lucide-react';
 import ProductPhotos from '@/components/products/ProductPhotos';
 import { CATEGORIAS } from '@/lib/productCategories';
+import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 
 const emptyProduct = {
   sku: '', ean: '', nome: '', descricao: '', marca: '',
@@ -38,11 +39,18 @@ export default function ProductForm() {
   const [form, setForm] = useState(emptyProduct);
   const [newAttrKey, setNewAttrKey] = useState('');
   const [newAttrVal, setNewAttrVal] = useState('');
+  const [showVariationsModal, setShowVariationsModal] = useState(false);
 
   const { data: product } = useQuery({
     queryKey: ['product', productId],
     queryFn: () => base44.entities.Product.filter({ id: productId }),
     enabled: isEditing,
+  });
+
+  const { data: variacoes = [] } = useQuery({
+    queryKey: ['variacoes', productId],
+    queryFn: () => base44.entities.Product.filter({ produto_pai_id: productId }),
+    enabled: isEditing && form.tipo === 'pai',
   });
 
   useEffect(() => {
@@ -117,10 +125,16 @@ export default function ProductForm() {
         <Button variant="ghost" size="icon" onClick={() => navigate('/produtos')}>
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold">{isEditing ? 'Editar Produto' : 'Novo Produto'}</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Preencha os dados do produto</p>
         </div>
+        {isEditing && form.tipo === 'pai' && (
+          <Button variant="outline" className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => setShowVariationsModal(true)}>
+            <Layers className="w-4 h-4" />
+            Editar Variações ({variacoes.length})
+          </Button>
+        )}
       </div>
 
       {/* Fotos */}
@@ -309,6 +323,15 @@ export default function ProductForm() {
           {saveMutation.isPending ? 'Salvando...' : 'Salvar Produto'}
         </Button>
       </div>
+
+      {isEditing && form.tipo === 'pai' && (
+        <BulkEditVariationsModal
+          open={showVariationsModal}
+          onClose={() => setShowVariationsModal(false)}
+          pai={product?.[0] || form}
+          variacoes={variacoes}
+        />
+      )}
     </div>
   );
 }
