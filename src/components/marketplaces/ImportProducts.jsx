@@ -67,6 +67,13 @@ export default function ImportProducts({ companies }) {
     setMlSyncing(true);
     setMlSyncMsg(null);
     try {
+      // 1. Renova o token primeiro
+      await base44.functions.invoke('mlProxy', { action: 'refresh' });
+    } catch {
+      // Token pode não existir ainda, continua
+    }
+    try {
+      // 2. Busca anúncios da ML
       const res = await base44.functions.invoke('mlProxy', { action: 'syncListings' });
       if (res.data?.success) {
         setMlSyncMsg({ type: 'success', text: `${res.data.synced} anúncio(s) sincronizado(s) com sucesso!` });

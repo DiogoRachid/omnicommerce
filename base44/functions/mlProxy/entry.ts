@@ -148,6 +148,15 @@ Deno.serve(async (req) => {
       return Response.json({ connected: true, valid, user_id: token.user_id, expires_at: token.expires_at });
     }
 
+    // ── refresh ───────────────────────────────────────────────────────────────
+    if (action === 'refresh') {
+      const token = await getStoredToken(base44);
+      if (!token) return Response.json({ connected: false });
+      const { appId, secretKey } = await getMlCredentials(base44);
+      const newToken = await refreshTokenIfNeeded(base44, token, appId, secretKey);
+      return Response.json({ connected: true, token: newToken });
+    }
+
     // ── disconnect ────────────────────────────────────────────────────────────
     if (action === 'disconnect') {
       const tokens = await base44.asServiceRole.entities.MercadoLivreToken.list('-created_date', 50);
@@ -361,6 +370,7 @@ Deno.serve(async (req) => {
     return Response.json({ error: `Action desconhecida: ${action}` }, { status: 400 });
 
   } catch (error) {
+    console.error('mlProxy error:', error.message);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
