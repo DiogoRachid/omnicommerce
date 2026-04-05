@@ -274,9 +274,11 @@ Deno.serve(async (req) => {
         const itemIds = searchRes?.results || [];
         if (itemIds.length === 0) break;
 
+        // Batch: busca todos os items com delay maior
         for (const itemId of itemIds) {
           try {
             const item = await mlRequest(base44, 'GET', `/items/${itemId}`);
+            await sleep(200); // Pausa após request ML
 
             const statusMap: Record<string, string> = {
               active: 'ativo',
@@ -301,16 +303,17 @@ Deno.serve(async (req) => {
             } else {
               await base44.asServiceRole.entities.MarketplaceListing.create(listingData);
             }
-
             synced++;
-            await sleep(400); // Delay entre itens para evitar rate limit
+            await sleep(1000); // Pausa após entity operation
           } catch (err) {
             console.error(`Erro ao sincronizar item ${itemId}:`, err.message);
+            await sleep(1000); // Pausa após erro
           }
         }
 
         if (itemIds.length < limit) break;
         offset += limit;
+        await sleep(2000); // Pausa entre páginas
       }
 
       return Response.json({ success: true, synced });
