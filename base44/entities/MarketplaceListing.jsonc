@@ -54,7 +54,6 @@
     }
   },
   "required": [
-    "product_id",
     "marketplace"
   ]
 }
