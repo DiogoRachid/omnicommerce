@@ -10,13 +10,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Store, ExternalLink, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw } from 'lucide-react';
+import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
 import ExportProducts from '@/components/marketplaces/ExportProducts';
 import OperationLogs from '@/components/marketplaces/OperationLogs';
-import MercadoLivrePanel from '@/components/marketplaces/MercadoLivrePanel';
 
 const marketplaceNames = {
   mercado_livre: 'Mercado Livre',
@@ -128,10 +127,6 @@ export default function Marketplaces() {
     queryFn: () => base44.entities.Company.list('-created_date', 100),
   });
 
-  const activeCompanies = selectedCompany === 'all'
-    ? companies
-    : companies.filter(c => c.id === selectedCompany);
-
   const marketplaceStats = ['mercado_livre', 'shopee', 'amazon'].map(mp => {
     const mpListings = listings.filter(l => l.marketplace === mp);
     return {
@@ -180,17 +175,11 @@ export default function Marketplaces() {
         ))}
       </div>
 
-      {/* Tabs com as novas funcionalidades */}
-      <Tabs defaultValue="contas">
+      {/* Tabs */}
+      <Tabs defaultValue="buscar">
         <TabsList className="flex-wrap h-auto gap-1">
-          <TabsTrigger value="contas" className="gap-1.5 text-xs">
-            <Store className="w-3.5 h-3.5" /> Contas
-          </TabsTrigger>
-          <TabsTrigger value="testar" className="gap-1.5 text-xs">
-            <Wifi className="w-3.5 h-3.5" /> Testar Conexão
-          </TabsTrigger>
-          <TabsTrigger value="importar" className="gap-1.5 text-xs">
-            <Download className="w-3.5 h-3.5" /> Importar Produtos
+          <TabsTrigger value="buscar" className="gap-1.5 text-xs">
+            <Download className="w-3.5 h-3.5" /> Buscar Produtos
           </TabsTrigger>
           <TabsTrigger value="exportar" className="gap-1.5 text-xs">
             <Upload className="w-3.5 h-3.5" /> Exportar Produtos
@@ -198,74 +187,27 @@ export default function Marketplaces() {
           <TabsTrigger value="anuncios" className="gap-1.5 text-xs">
             <Store className="w-3.5 h-3.5" /> Anúncios
           </TabsTrigger>
+          <TabsTrigger value="testar" className="gap-1.5 text-xs">
+            <Wifi className="w-3.5 h-3.5" /> Testar Conexão
+          </TabsTrigger>
           <TabsTrigger value="logs" className="gap-1.5 text-xs">
             <ClipboardList className="w-3.5 h-3.5" /> Logs
           </TabsTrigger>
         </TabsList>
 
-        {/* Contas — mantido */}
-        <TabsContent value="contas" className="mt-4">
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Mercado Livre</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <MercadoLivrePanel />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Integrações por Empresa</CardTitle>
-              </CardHeader>
-              <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Configure as integrações dos marketplaces em cada empresa na página de{' '}
-                <a href="/empresas" className="text-primary underline">Empresas</a>.
-              </p>
-              {activeCompanies.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">Nenhuma empresa selecionada</p>
-              ) : (
-                <div className="space-y-3">
-                  {activeCompanies.map((c) => (
-                    <div key={c.id} className="p-4 border rounded-lg">
-                      <h4 className="font-semibold text-sm mb-2">{c.nome_fantasia || c.razao_social}</h4>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant={c.bling_integrated ? 'default' : 'secondary'} className="text-[10px]">
-                          Bling: {c.bling_integrated ? 'Conectado' : 'Desconectado'}
-                        </Badge>
-                        <Badge variant={c.marketplaces_config?.mercado_livre?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                          ML: {c.marketplaces_config?.mercado_livre?.enabled ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                        <Badge variant={c.marketplaces_config?.shopee?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                          Shopee: {c.marketplaces_config?.shopee?.enabled ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                        <Badge variant={c.marketplaces_config?.amazon?.enabled ? 'default' : 'secondary'} className="text-[10px]">
-                          Amazon: {c.marketplaces_config?.amazon?.enabled ? 'Ativo' : 'Inativo'}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
         {/* Testar Conexão */}
         <TabsContent value="testar" className="mt-4">
-          <ConnectionTester companies={activeCompanies} />
+          <ConnectionTester companies={companies} />
         </TabsContent>
 
-        {/* Importar Produtos */}
-        <TabsContent value="importar" className="mt-4">
-          <ImportProducts companies={activeCompanies} />
+        {/* Buscar Produtos */}
+        <TabsContent value="buscar" className="mt-4">
+          <ImportProducts companies={companies} />
         </TabsContent>
 
         {/* Exportar Produtos */}
         <TabsContent value="exportar" className="mt-4">
-          <ExportProducts companies={activeCompanies} selectedCompany={selectedCompany} />
+          <ExportProducts companies={companies} selectedCompany={selectedCompany} />
         </TabsContent>
 
         {/* Anúncios */}
