@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
-  Trash2, ChevronRight, ChevronDown, Layers, Sparkles, Bot
+  Trash2, ChevronRight, ChevronDown, Layers, Sparkles, Bot, PenSquare
 } from 'lucide-react';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
 import { getCategoriaLabel, formatBRL, calcTributos } from '@/lib/productCategories';
@@ -17,6 +17,7 @@ import ProductDetailModal from '@/components/products/ProductDetailModal';
 import ColumnConfigPanel, { DEFAULT_COLUMNS } from '@/components/products/ColumnConfigPanel';
 import ViewModeSelector from '@/components/products/ViewModeSelector';
 import ProductManagerChat from '@/components/products/ProductManagerChat';
+import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -64,7 +65,7 @@ function useResizableColumns(initialWidths) {
 }
 
 // ── Componente de linha de tabela ─────────────────────────────────────────────
-function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDelete,
+function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDelete, onBulkEdit,
   isVariacao = false, indent = 0, extraLeft, parentNome = '', parentCor = '' }) {
   const isPai = p.tipo === 'pai';
   const tributos = calcTributos(p.preco_venda, p.categoria);
@@ -166,6 +167,11 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
           <Link to={`/produtos/editar/${p.id}`}>
             <Button variant="ghost" size="icon" className="h-7 w-7"><Edit className="w-3 h-3" /></Button>
           </Link>
+          {isPai && onBulkEdit && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-orange-600 hover:bg-orange-50" title="Editar variações em massa" onClick={() => onBulkEdit(p)}>
+              <PenSquare className="w-3.5 h-3.5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggle(p.id, p.ativo)}>
             {p.ativo ? <ToggleRight className="w-3.5 h-3.5 text-primary" /> : <ToggleLeft className="w-3.5 h-3.5 text-muted-foreground" />}
           </Button>
@@ -180,7 +186,7 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
 
 // ── Renderer por modo de visualização ────────────────────────────────────────
 
-function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols, expanded, setExpanded, selected, setSelected, onOpen, onToggle, onDelete }) {
+function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols, expanded, setExpanded, selected, setSelected, onOpen, onToggle, onDelete, onBulkEdit }) {
   const rows = [];
 
   const rowProps = (p, extra = {}) => ({
@@ -190,6 +196,7 @@ function RenderRows({ paginatedFiltered, variacoesPorPai, viewMode, visibleCols,
     onOpen,
     onToggle,
     onDelete,
+    onBulkEdit,
     ...extra,
   });
 
@@ -382,6 +389,7 @@ export default function Products() {
   const [page, setPage] = useState(0);
   const [detailProduct, setDetailProduct] = useState(null);
   const [showManagerChat, setShowManagerChat] = useState(false);
+  const [bulkEditProduct, setBulkEditProduct] = useState(null); // produto pai para edição em massa
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('products_viewMode') || 'pai_collapsed');
   const [visibleCols, setVisibleCols] = useState(() => {
     try { return JSON.parse(localStorage.getItem('products_cols')) || DEFAULT_COLUMNS; } catch { return DEFAULT_COLUMNS; }
@@ -581,6 +589,7 @@ export default function Products() {
                     onOpen={setDetailProduct}
                     onToggle={(id, ativo) => toggleMutation.mutate({ id, ativo })}
                     onDelete={(id) => deleteMutation.mutate(id)}
+                    onBulkEdit={setBulkEditProduct}
                   />
                 </tbody>
               </table>
@@ -607,6 +616,12 @@ export default function Products() {
 
       <ProductManagerChat open={showManagerChat} onClose={() => setShowManagerChat(false)} selectedCompany={selectedCompany} />
       <ProductAIModal open={showAIModal} onClose={() => setShowAIModal(false)} selectedCompany={selectedCompany} />
+      <BulkEditVariationsModal
+        open={!!bulkEditProduct}
+        onClose={() => setBulkEditProduct(null)}
+        pai={bulkEditProduct}
+        variacoes={bulkEditProduct ? (variacoesPorPai[bulkEditProduct.id] || []) : []}
+      />
       <ProductDetailModal
         product={detailProduct}
         variacoes={detailProduct ? (variacoesPorPai[detailProduct.id] || []) : []}
