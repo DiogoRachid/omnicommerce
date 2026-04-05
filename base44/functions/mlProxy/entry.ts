@@ -4,15 +4,25 @@ const ML_API = 'https://api.mercadolibre.com';
 
 // ── Pega credenciais ML da empresa ou fallback para env vars ──────────────────
 async function getMlCredentials(base44) {
-  const companies = await base44.asServiceRole.entities.Company.list('-created_date', 1);
-  const company = companies?.[0];
-  const mlConfig = company?.marketplaces_config?.mercado_livre || {};
-
-  const appId = (mlConfig.ml_app_id || Deno.env.get('ML_APP_ID') || '').trim();
-  const secretKey = (mlConfig.ml_secret_key || Deno.env.get('ML_SECRET_KEY') || '').trim();
-
-  console.log('Using ml_app_id:', appId?.slice(0, 6), 'length:', appId?.length);
-  return { appId, secretKey };
+  const companies = await base44.asServiceRole.entities.Company.list('-created_date', 20);
+  // Tenta encontrar a primeira empresa com ML credentials configuradas
+  for (const company of (companies || [])) {
+    const mlConfig = company?.marketplaces_config?.mercado_livre || {};
+    const appId = (mlConfig.ml_app_id || '').trim();
+    const secretKey = (mlConfig.ml_secret_key || '').trim();
+    if (appId && secretKey) {
+      console.log('Found ML credentials in company:', company.id);
+      return { appId, secretKey };
+    }
+  }
+  // Fallback para env vars
+  const appId = (Deno.env.get('ML_APP_ID') || '').trim();
+  const secretKey = (Deno.env.get('ML_SECRET_KEY') || '').trim();
+  if (appId && secretKey) {
+    console.log('Using ML credentials from env vars');
+    return { appId, secretKey };
+  }
+  throw new Error('Credenciais Mercado Livre não configuradas. Configure ml_app_id e ml_secret_key na empresa ou nas variáveis de ambiente.');
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
@@ -40,6 +50,8 @@ async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
   const tenMinutes = 10 * 60 * 1000;
   if (token.expires_at - Date.now() > tenMinutes) return token;
 
+  console.log('Refreshing ML token for user:', token.user_id?.slice(0, 4));
+
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
     client_id: appId,
@@ -54,8 +66,20 @@ async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
   });
 
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Falha ao renovar token ML: ${err}`);
+    const errText = await res.text();
+    console.error('Token refresh failed:', res.status, errText);
+    let errMsg;
+    try {
+      const err = JSON.parse(errText);
+      errMsg = err.message || err.error || errText;
+    } catch {
+      errMsg = errText;
+    }
+    // refresh_token vencido ou inválido precisa de re-autenticação
+    if (res.status === 400 && errMsg?.includes('invalid_grant')) {
+      throw new Error('Sessão Mercado Livre expirada. Reconecte na página da empresa.');
+    }
+    throw new Error(`Falha ao renovar token ML: ${errMsg}`);
   }
 
   const data = await res.json();
