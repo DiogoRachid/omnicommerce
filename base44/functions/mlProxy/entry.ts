@@ -2,10 +2,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const ML_API = 'https://api.mercadolibre.com';
 
-// ── Pega credenciais ML da empresa ou fallback para env vars ──────────────────
+// ── Pega credenciais ML da empresa ────────────────────────────────────────────
 async function getMlCredentials(base44) {
   const companies = await base44.asServiceRole.entities.Company.list('-created_date', 20);
-  // Tenta encontrar a primeira empresa com ML credentials configuradas
   for (const company of (companies || [])) {
     const mlConfig = company?.marketplaces_config?.mercado_livre || {};
     const appId = (mlConfig.ml_app_id || '').trim();
@@ -15,18 +14,16 @@ async function getMlCredentials(base44) {
       return { appId, secretKey };
     }
   }
-  // Fallback para env vars
   const appId = (Deno.env.get('ML_APP_ID') || '').trim();
   const secretKey = (Deno.env.get('ML_SECRET_KEY') || '').trim();
   if (appId && secretKey) {
     console.log('Using ML credentials from env vars');
     return { appId, secretKey };
   }
-  throw new Error('Credenciais Mercado Livre não configuradas. Configure ml_app_id e ml_secret_key na empresa ou nas variáveis de ambiente.');
+  throw new Error('Credenciais Mercado Livre não configuradas.');
 }
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
-
 async function getStoredToken(base44) {
   const tokens = await base44.asServiceRole.entities.MercadoLivreToken.list('-created_date', 1);
   return tokens?.[0] || null;
@@ -51,7 +48,6 @@ async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
   if (token.expires_at - Date.now() > tenMinutes) return token;
 
   console.log('Refreshing ML token for user:', token.user_id?.slice(0, 4));
-
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
     client_id: appId,
@@ -67,15 +63,8 @@ async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error('Token refresh failed:', res.status, errText);
     let errMsg;
-    try {
-      const err = JSON.parse(errText);
-      errMsg = err.message || err.error || errText;
-    } catch {
-      errMsg = errText;
-    }
-    // refresh_token vencido ou inválido precisa de re-autenticação
+    try { errMsg = JSON.parse(errText)?.message || errText; } catch { errMsg = errText; }
     if (res.status === 400 && errMsg?.includes('invalid_grant')) {
       throw new Error('Sessão Mercado Livre expirada. Reconecte na página da empresa.');
     }
@@ -83,8 +72,7 @@ async function refreshTokenIfNeeded(base44, token, appId, secretKey) {
   }
 
   const data = await res.json();
-  const updated = await saveToken(base44, data, token.id);
-  return updated;
+  return saveToken(base44, data, token.id);
 }
 
 async function mlRequest(base44, method, path, body) {
@@ -108,13 +96,13 @@ async function mlRequest(base44, method, path, body) {
   const text = await res.text();
   let json;
   try { json = JSON.parse(text); } catch { json = { raw: text }; }
-
   if (!res.ok) throw new Error(json?.message || json?.error || text);
   return json;
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────────
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+// ── Main handler ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -136,13 +124,7 @@ Deno.serve(async (req) => {
         redirect_uri,
       });
 
-      console.log('exchange params:', {
-        grant_type: 'authorization_code',
-        client_id: appId,
-        client_id_length: appId?.length,
-        redirect_uri,
-        code_prefix: code?.slice(0, 10),
-      });
+      console.log('exchange params:', { client_id: appId, client_id_length: appId?.length, redirect_uri, code_prefix: code?.slice(0, 10) });
 
       const res = await fetch(`${ML_API}/oauth/token`, {
         method: 'POST',
@@ -154,7 +136,6 @@ Deno.serve(async (req) => {
       console.log('exchange response:', JSON.stringify(data));
       if (!res.ok) throw new Error(data?.message || data?.error || JSON.stringify(data));
 
-      // Remove tokens antigos
       const old = await base44.asServiceRole.entities.MercadoLivreToken.list('-created_date', 10);
       for (const t of (old || [])) {
         await base44.asServiceRole.entities.MercadoLivreToken.delete(t.id);
@@ -251,44 +232,67 @@ Deno.serve(async (req) => {
       const token = await getStoredToken(base44);
       if (!token) throw new Error('Mercado Livre não está conectado.');
 
-      const userId = token.user_id;
-      let synced = 0;
-      let offset = 0;
-      const limit = 50;
+      const { appId, secretKey } = await getMlCredentials(base44);
+      const freshToken = await refreshTokenIfNeeded(base44, token, appId, secretKey);
+      const authHeader = `Bearer ${freshToken.access_token}`;
+      const userId = freshToken.user_id || token.user_id;
 
-      // Carrega listings existentes em cache
-      const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+      const statusMap = {
+        active: 'ativo',
+        paused: 'pausado',
+        closed: 'inativo',
+        under_review: 'pendente',
+      };
+
+      // 1. Carrega listings existentes em memória (evita N queries ao banco)
       const allListings = await base44.asServiceRole.entities.MarketplaceListing.list('-created_date', 2000);
-      const existingMap = new Map<string, any>();
-      for (const listing of (allListings || [])) {
-        if (listing.marketplace_item_id) existingMap.set(listing.marketplace_item_id, listing);
+      const existingMap = new Map();
+      for (const l of (allListings || [])) {
+        if (l.marketplace_item_id) existingMap.set(l.marketplace_item_id, l);
       }
 
+      // 2. Coleta todos os IDs paginado (search retorna só IDs, sem custo de rate limit)
+      const allItemIds = [];
+      let offset = 0;
+      const searchLimit = 200;
+
       while (true) {
-        const searchRes = await mlRequest(
-          base44,
-          'GET',
-          `/users/${userId}/items/search?status=active&limit=${limit}&offset=${offset}`
+        const searchRes = await fetch(
+          `${ML_API}/users/${userId}/items/search?status=active&limit=${searchLimit}&offset=${offset}`,
+          { headers: { Authorization: authHeader, Accept: 'application/json' } }
         );
+        const searchData = await searchRes.json();
+        const ids = searchData?.results || [];
+        if (ids.length === 0) break;
+        allItemIds.push(...ids);
+        if (ids.length < searchLimit) break;
+        offset += searchLimit;
+        await sleep(200);
+      }
 
-        const itemIds = searchRes?.results || [];
-        if (itemIds.length === 0) break;
+      console.log(`Total de anúncios encontrados: ${allItemIds.length}`);
 
-        // Batch: busca todos os items com delay maior
-        for (const itemId of itemIds) {
-          try {
-            const item = await mlRequest(base44, 'GET', `/items/${itemId}`);
-            await sleep(200); // Pausa após request ML
+      // 3. Busca detalhes em lote de 20 via /items?ids=A,B,C
+      //    Uma chamada por lote em vez de uma por item — reduz rate limit drasticamente
+      let synced = 0;
+      const batchSize = 20;
 
-            const statusMap: Record<string, string> = {
-              active: 'ativo',
-              paused: 'pausado',
-              closed: 'inativo',
-              under_review: 'pendente',
-            };
+      for (let i = 0; i < allItemIds.length; i += batchSize) {
+        const batch = allItemIds.slice(i, i + batchSize);
+
+        try {
+          const batchRes = await fetch(
+            `${ML_API}/items?ids=${batch.join(',')}&attributes=id,title,price,status,permalink`,
+            { headers: { Authorization: authHeader, Accept: 'application/json' } }
+          );
+          const batchData = await batchRes.json();
+          const items = Array.isArray(batchData) ? batchData : [];
+
+          for (const entry of items) {
+            if (entry.code !== 200 || !entry.body) continue;
+            const item = entry.body;
 
             const listingData = {
-              product_id: `ML_PROD_${item.id}`,
               marketplace_item_id: item.id,
               product_name: item.title,
               marketplace: 'mercado_livre',
@@ -298,26 +302,28 @@ Deno.serve(async (req) => {
               ultima_sync: new Date().toISOString(),
             };
 
-            const existing = existingMap.get(item.id);
-            if (existing) {
-              await base44.asServiceRole.entities.MarketplaceListing.update(existing.id, listingData);
-            } else {
-              await base44.asServiceRole.entities.MarketplaceListing.create(listingData);
+            try {
+              const existing = existingMap.get(item.id);
+              if (existing) {
+                await base44.asServiceRole.entities.MarketplaceListing.update(existing.id, listingData);
+              } else {
+                await base44.asServiceRole.entities.MarketplaceListing.create(listingData);
+              }
+              synced++;
+            } catch (dbErr) {
+              console.error(`Erro ao salvar item ${item.id}:`, dbErr.message);
             }
-            synced++;
-            await sleep(1000); // Pausa após entity operation
-          } catch (err) {
-            console.error(`Erro ao sincronizar item ${itemId}:`, err.message);
-            await sleep(1000); // Pausa após erro
           }
+        } catch (batchErr) {
+          console.error(`Erro no lote ${i}–${i + batchSize}:`, batchErr.message);
         }
 
-        if (itemIds.length < limit) break;
-        offset += limit;
-        await sleep(2000); // Pausa entre páginas
+        // Pausa entre lotes para não estourar rate limit do Base44
+        if (i + batchSize < allItemIds.length) await sleep(400);
       }
 
-      return Response.json({ success: true, synced });
+      return Response.json({ success: true, synced, total: allItemIds.length });
+    }
 
     // ── syncStock ─────────────────────────────────────────────────────────────
     if (action === 'syncStock') {
@@ -329,11 +335,8 @@ Deno.serve(async (req) => {
 
       const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, body);
 
-      // Atualiza o registro local
       const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
-        { marketplace_item_id: item_id },
-        '-created_date',
-        1
+        { marketplace_item_id: item_id }, '-created_date', 1
       );
       if (existing && existing.length > 0) {
         const updateData = { ultima_sync: new Date().toISOString() };
@@ -350,9 +353,7 @@ Deno.serve(async (req) => {
       const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, { status: 'paused' });
 
       const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
-        { marketplace_item_id: item_id },
-        '-created_date',
-        1
+        { marketplace_item_id: item_id }, '-created_date', 1
       );
       if (existing && existing.length > 0) {
         await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, {
@@ -370,9 +371,7 @@ Deno.serve(async (req) => {
       const data = await mlRequest(base44, 'PUT', `/items/${item_id}`, { status: 'active' });
 
       const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
-        { marketplace_item_id: item_id },
-        '-created_date',
-        1
+        { marketplace_item_id: item_id }, '-created_date', 1
       );
       if (existing && existing.length > 0) {
         await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, {
