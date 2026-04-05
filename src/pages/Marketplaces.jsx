@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw } from 'lucide-react';
+import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
