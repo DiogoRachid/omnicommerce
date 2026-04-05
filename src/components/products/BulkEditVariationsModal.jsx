@@ -21,6 +21,19 @@ function parseCT(v) {
   return { cor: attrs[0] || '', tamanho: attrs[1] || '' };
 }
 
+// Ordena tamanhos: numérico primeiro, depois texto (ex: P, M, G)
+function sortTamanhos(list) {
+  return [...list].sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    const aNum = !isNaN(na) && String(na) === a.trim();
+    const bNum = !isNaN(nb) && String(nb) === b.trim();
+    if (aNum && bNum) return na - nb;
+    if (aNum) return -1;
+    if (bNum) return 1;
+    return a.localeCompare(b);
+  });
+}
+
 // Extrai listas únicas ordenadas de cores e tamanhos
 function extractDimensions(variacoes) {
   const cores = [];
@@ -30,7 +43,7 @@ function extractDimensions(variacoes) {
     if (cor && !cores.includes(cor)) cores.push(cor);
     if (tamanho && !tamanhos.includes(tamanho)) tamanhos.push(tamanho);
   });
-  return { cores, tamanhos };
+  return { cores, tamanhos: sortTamanhos(tamanhos) };
 }
 
 // Monta mapa { "Cor|Tamanho": produto }
@@ -171,7 +184,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
   const prodMap = useMemo(() => buildMap(variacoes), [variacoes]);
 
-  // Estado local: { "Cor|Tamanho": { preco_venda, estoque_atual, sku, ean } }
+  // Estado local: { "Cor|Tamanho": { preco_venda, estoque_atual, sku, ean, isNew } }
   const [edits, setEdits] = useState(() => {
     const init = {};
     variacoes.forEach(v => {
@@ -181,10 +194,38 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
         estoque_atual: v.estoque_atual ?? '',
         sku: v.sku ?? '',
         ean: v.ean ?? '',
+        isNew: false,
       };
     });
     return init;
   });
+
+  // Adiciona nova cor → cria células para todos os tamanhos atuais
+  const handleAddCor = (novaCor) => {
+    setCores(prev => [...prev, novaCor]);
+    setEdits(prev => {
+      const next = { ...prev };
+      const tamList = tamanhos.length > 0 ? tamanhos : [''];
+      tamList.forEach(t => {
+        const key = `${novaCor}|${t}`;
+        if (!next[key]) next[key] = { preco_venda: '', estoque_atual: '', sku: '', ean: '', isNew: true };
+      });
+      return next;
+    });
+  };
+
+  // Adiciona novo tamanho → cria células para todas as cores atuais, reordena
+  const handleAddTamanho = (novoTam) => {
+    setTamanhos(prev => sortTamanhos([...prev, novoTam]));
+    setEdits(prev => {
+      const next = { ...prev };
+      cores.forEach(c => {
+        const key = `${c}|${novoTam}`;
+        if (!next[key]) next[key] = { preco_venda: '', estoque_atual: '', sku: '', ean: '', isNew: true };
+      });
+      return next;
+    });
+  };
 
   const setCell = (cor, tamanho, field, value) => {
     setEdits(prev => ({
@@ -219,17 +260,41 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
   const handleSave = () => {
     const updates = [];
+    const creates = [];
     Object.entries(edits).forEach(([key, vals]) => {
       const prod = prodMap[key];
-      if (!prod) return;
-      updates.push({ id: prod.id, data: {
-        preco_venda: vals.preco_venda !== '' ? parseFloat(vals.preco_venda) : undefined,
-        estoque_atual: vals.estoque_atual !== '' ? parseInt(vals.estoque_atual) : undefined,
-        sku: vals.sku || undefined,
-        ean: vals.ean || undefined,
-      }});
+      const [cor, tamanho] = key.split('|');
+      if (prod) {
+        // Variação existente → atualizar
+        updates.push({ id: prod.id, data: {
+          preco_venda: vals.preco_venda !== '' ? parseFloat(vals.preco_venda) : undefined,
+          estoque_atual: vals.estoque_atual !== '' ? parseInt(vals.estoque_atual) : undefined,
+          sku: vals.sku || undefined,
+          ean: vals.ean || undefined,
+        }});
+      } else if (vals.isNew && (cores.includes(cor) && (tamanhos.includes(tamanho) || tamanho === ''))) {
+        // Nova célula → criar variação
+        const atributos = tamanho ? `${cor} | ${tamanho}` : cor;
+        creates.push({
+          nome: `${pai.nome} - ${atributos}`,
+          sku: vals.sku || `${pai.sku || 'VAR'}-${cor.substring(0,2)}${tamanho}`.toUpperCase().replace(/\s/g,''),
+          ean: vals.ean || '',
+          preco_venda: vals.preco_venda !== '' ? parseFloat(vals.preco_venda) : 0,
+          estoque_atual: vals.estoque_atual !== '' ? parseInt(vals.estoque_atual) : 0,
+          tipo: 'variacao',
+          produto_pai_id: pai.id,
+          variacoes_atributos: atributos,
+          ativo: true,
+          origem: 'manual',
+          marca: pai.marca || '',
+          ncm: pai.ncm || '',
+          cest: pai.cest || '',
+          unidade_medida: pai.unidade_medida || 'UN',
+          company_id: pai.company_id,
+        });
+      }
     });
-    onSaveVariations(updates);
+    onSaveVariations(updates, creates);
   };
 
   // Modo sem tamanho (apenas cor)
@@ -242,14 +307,14 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
         <TagInput
           label="Cor"
           tags={cores}
-          onAdd={v => setCores(p => [...p, v])}
+          onAdd={handleAddCor}
           onRemove={v => setCores(p => p.filter(c => c !== v))}
         />
         <TagInput
           label="Tamanho"
           tags={tamanhos}
-          onAdd={v => setTamanhos(p => [...p, v])}
-          onRemove={v => setTamanhos(p => p.filter(t => t !== v))}
+          onAdd={handleAddTamanho}
+          onRemove={v => setTamanhos(p => sortTamanhos(p.filter(t => t !== v)))}
         />
         <p className="text-[10px] text-muted-foreground pt-2">
           💡 Edite as opções acima e clique em "Salvar variações" para aplicar. Novas combinações serão criadas automaticamente.
@@ -286,7 +351,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
                 const isFirstRow = tidx === 0;
 
                 return (
-                  <tr key={key} className={prod ? 'hover:bg-accent/30' : 'bg-muted/30 opacity-50'}>
+                  <tr key={key} className={prod ? 'hover:bg-accent/30' : cell.isNew ? 'bg-green-50/60 hover:bg-green-50' : 'bg-muted/30 opacity-50'}>
                     {/* Cor — só na primeira linha desse grupo */}
                     {isFirstRow && (
                       <td
@@ -327,13 +392,14 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
                     {hasTamanho && (
                       <td className="border border-border px-3 py-2 text-center font-medium">
                         {tamanho || '—'}
-                        {!prod && <div className="text-[10px] text-muted-foreground">N/D</div>}
+                        {!prod && cell.isNew && <div className="text-[10px] text-green-600 font-semibold">NOVO</div>}
+                        {!prod && !cell.isNew && <div className="text-[10px] text-muted-foreground">N/D</div>}
                       </td>
                     )}
 
                     {/* Preço */}
                     <td className="border border-border px-2 py-1.5">
-                      {prod ? (
+                      {(prod || cell.isNew) ? (
                         <EditCell
                           type="number"
                           placeholder="0,00"
@@ -345,7 +411,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
                     {/* Estoque */}
                     <td className="border border-border px-2 py-1.5">
-                      {prod ? (
+                      {(prod || cell.isNew) ? (
                         <EditCell
                           type="number"
                           placeholder="0"
@@ -357,7 +423,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
                     {/* SKU */}
                     <td className="border border-border px-2 py-1.5">
-                      {prod ? (
+                      {(prod || cell.isNew) ? (
                         <EditCell
                           placeholder="SKU"
                           value={cell.sku}
@@ -368,7 +434,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
                     {/* EAN */}
                     <td className="border border-border px-2 py-1.5">
-                      {prod ? (
+                      {(prod || cell.isNew) ? (
                         <EditCell
                           placeholder="EAN"
                           value={cell.ean}
@@ -387,11 +453,14 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
       {cores.length > 0 && (
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {variacoes.length} variações · {cores.length} cores{hasTamanho ? ` · ${tamanhos.length} tamanhos` : ''}
+            {variacoes.length} existentes · {cores.length} cores{hasTamanho ? ` · ${tamanhos.length} tamanhos` : ''}
+            {Object.values(edits).filter(e => e.isNew).length > 0 && (
+              <span className="ml-2 text-green-600 font-semibold">+{Object.values(edits).filter(e => e.isNew).length} novas</span>
+            )}
           </p>
           <Button onClick={handleSave} disabled={saving} className="gap-2">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? 'Salvando...' : `Salvar ${variacoes.length} variações`}
+            {saving ? 'Salvando...' : 'Salvar variações'}
           </Button>
         </div>
       )}
@@ -428,7 +497,7 @@ export default function BulkEditVariationsModal({ open, onClose, pai, variacoes 
     setSavingPai(false);
   };
 
-  const handleSaveVariations = async (updates) => {
+  const handleSaveVariations = async (updates, creates = []) => {
     setSavingVars(true);
     try {
       for (const { id, data } of updates) {
@@ -438,8 +507,14 @@ export default function BulkEditVariationsModal({ open, onClose, pai, variacoes 
           await base44.entities.Product.update(id, clean);
         }
       }
+      for (const data of creates) {
+        await base44.entities.Product.create(data);
+      }
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success(`${updates.length} variações atualizadas com sucesso!`);
+      const msg = creates.length > 0
+        ? `${updates.length} atualizadas · ${creates.length} novas criadas!`
+        : `${updates.length} variações atualizadas com sucesso!`;
+      toast.success(msg);
     } catch (e) {
       toast.error('Erro ao salvar variações: ' + e.message);
     }
