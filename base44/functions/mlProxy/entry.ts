@@ -256,6 +256,14 @@ Deno.serve(async (req) => {
       let offset = 0;
       const limit = 50;
 
+      // Carrega listings existentes em cache
+      const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+      const allListings = await base44.asServiceRole.entities.MarketplaceListing.list('-created_date', 2000);
+      const existingMap = new Map<string, any>();
+      for (const listing of (allListings || [])) {
+        if (listing.marketplace_item_id) existingMap.set(listing.marketplace_item_id, listing);
+      }
+
       while (true) {
         const searchRes = await mlRequest(
           base44,
@@ -270,7 +278,7 @@ Deno.serve(async (req) => {
           try {
             const item = await mlRequest(base44, 'GET', `/items/${itemId}`);
 
-            const statusMap = {
+            const statusMap: Record<string, string> = {
               active: 'ativo',
               paused: 'pausado',
               closed: 'inativo',
@@ -287,20 +295,15 @@ Deno.serve(async (req) => {
               ultima_sync: new Date().toISOString(),
             };
 
-            // Verifica se já existe um registro com esse marketplace_item_id
-            const existing = await base44.asServiceRole.entities.MarketplaceListing.filter(
-              { marketplace_item_id: item.id },
-              '-created_date',
-              1
-            );
-
-            if (existing && existing.length > 0) {
-              await base44.asServiceRole.entities.MarketplaceListing.update(existing[0].id, listingData);
+            const existing = existingMap.get(item.id);
+            if (existing) {
+              await base44.asServiceRole.entities.MarketplaceListing.update(existing.id, listingData);
             } else {
               await base44.asServiceRole.entities.MarketplaceListing.create(listingData);
             }
 
             synced++;
+            await sleep(400); // Delay entre itens para evitar rate limit
           } catch (err) {
             console.error(`Erro ao sincronizar item ${itemId}:`, err.message);
           }
@@ -311,7 +314,6 @@ Deno.serve(async (req) => {
       }
 
       return Response.json({ success: true, synced });
-    }
 
     // ── syncStock ─────────────────────────────────────────────────────────────
     if (action === 'syncStock') {
