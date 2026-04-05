@@ -1,0 +1,1 @@
+$f="src\pages\Marketplaces.jsx"; $c=[IO.File]::ReadAllText($f); $c=$c.Replace("Store, RefreshCw, Loader2, Search, Download,","Store, RefreshCw, Loader2, Search, Download, ExternalLink,"); [IO.File]::WriteAllText($f,$c)
