@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Save, Loader2, Layers, Package, Image as ImageIcon, X, Plus } from 'lucide-react';
+import { Save, Loader2, Layers, Package, Image as ImageIcon, X, Plus, Upload, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -184,6 +184,42 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
   const prodMap = useMemo(() => buildMap(variacoes), [variacoes]);
 
+  // Fotos por cor: { "Cor": ["url1", "url2"] }
+  const [fotosPorCor, setFotosPorCor] = useState(() => {
+    const init = {};
+    variacoes.forEach(v => {
+      const { cor } = parseCT(v);
+      if (cor && v.fotos?.length > 0 && !init[cor]) {
+        init[cor] = v.fotos;
+      }
+    });
+    return init;
+  });
+  const [uploadingCor, setUploadingCor] = useState(null); // qual cor está fazendo upload
+  const fileInputRef = useRef(null);
+  const uploadingCorRef = useRef(null);
+
+  const handlePhotoUpload = async (file, cor) => {
+    setUploadingCor(cor);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setFotosPorCor(prev => ({
+        ...prev,
+        [cor]: [...(prev[cor] || []), file_url],
+      }));
+    } catch (e) {
+      toast.error('Erro ao enviar foto: ' + e.message);
+    }
+    setUploadingCor(null);
+  };
+
+  const handleRemovePhoto = (cor, url) => {
+    setFotosPorCor(prev => ({
+      ...prev,
+      [cor]: (prev[cor] || []).filter(u => u !== url),
+    }));
+  };
+
   // Estado local: { "Cor|Tamanho": { preco_venda, estoque_atual, sku, ean, isNew } }
   const [edits, setEdits] = useState(() => {
     const init = {};
@@ -271,6 +307,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
           estoque_atual: vals.estoque_atual !== '' ? parseInt(vals.estoque_atual) : undefined,
           sku: vals.sku || undefined,
           ean: vals.ean || undefined,
+          fotos: fotosPorCor[cor] || undefined,
         }});
       } else if (vals.isNew && (cores.includes(cor) && (tamanhos.includes(tamanho) || tamanho === ''))) {
         // Nova célula → criar variação
@@ -284,6 +321,7 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
           tipo: 'variacao',
           produto_pai_id: pai.id,
           variacoes_atributos: atributos,
+          fotos: fotosPorCor[cor] || [],
           ativo: true,
           origem: 'manual',
           marca: pai.marca || '',
@@ -302,6 +340,22 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
 
   return (
     <div className="space-y-4">
+      {/* Input oculto para upload de foto */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={e => {
+          const file = e.target.files?.[0];
+          if (file && uploadingCorRef.current) {
+            handlePhotoUpload(file, uploadingCorRef.current);
+            uploadingCorRef.current = null;
+          }
+          e.target.value = '';
+        }}
+      />
+
       {/* Painel de atributos (Cor / Tamanho) */}
       <div className="rounded-lg border bg-muted/30 px-4 py-3 space-y-0">
         <TagInput
@@ -356,17 +410,41 @@ function VariationsGrid({ variacoes, pai, saving, onSaveVariations, onSaveAtribu
                     {isFirstRow && (
                       <td
                         rowSpan={hasTamanho ? tamanhos.length : 1}
-                        className="border border-border px-3 py-2 align-middle"
+                        className="border border-border px-3 py-2 align-top"
                       >
-                        <div className="flex flex-col items-center gap-2">
-                          {prod?.fotos?.[0] ? (
-                            <img src={prod.fotos[0]} className="w-12 h-12 rounded object-cover border" alt={cor} />
-                          ) : (
-                            <div className="w-12 h-12 rounded border bg-muted flex items-center justify-center">
-                              <ImageIcon className="w-4 h-4 text-muted-foreground" />
-                            </div>
-                          )}
+                        <div className="flex flex-col items-center gap-2 min-w-[110px]">
                           <span className="font-semibold text-[11px] text-center leading-tight">{cor}</span>
+
+                          {/* Galeria de fotos da cor */}
+                          <div className="flex flex-wrap gap-1 justify-center">
+                            {(fotosPorCor[cor] || []).map((url, fi) => (
+                              <div key={fi} className="relative group/photo">
+                                <img src={url} className="w-12 h-12 rounded object-cover border" alt={`${cor} ${fi+1}`} />
+                                <button
+                                  onClick={() => handleRemovePhoto(cor, url)}
+                                  className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-white rounded-full items-center justify-center hidden group-hover/photo:flex"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Botão de upload */}
+                          <button
+                            onClick={() => {
+                              uploadingCorRef.current = cor;
+                              fileInputRef.current?.click();
+                            }}
+                            disabled={uploadingCor === cor}
+                            className="flex items-center gap-1 text-[10px] text-primary border border-dashed border-primary/40 rounded px-2 py-1 hover:bg-primary/5 transition-colors disabled:opacity-50"
+                          >
+                            {uploadingCor === cor
+                              ? <Loader2 className="w-3 h-3 animate-spin" />
+                              : <Upload className="w-3 h-3" />}
+                            {(fotosPorCor[cor]?.length || 0) > 0 ? 'Add foto' : 'Foto'}
+                          </button>
+
                           {hasTamanho && (
                             <div className="flex flex-col gap-1 w-full mt-1">
                               <input
