@@ -288,6 +288,7 @@ Deno.serve(async (req) => {
             };
 
             const listingData = {
+              product_id: `ML_PROD_${item.id}`,
               marketplace_item_id: item.id,
               product_name: item.title,
               marketplace: 'mercado_livre',
