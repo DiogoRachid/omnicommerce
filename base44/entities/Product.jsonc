@@ -133,6 +133,37 @@
     },
     "bling_id": {
       "type": "string"
+    },
+    "marketplace_fields": {
+      "type": "object",
+      "description": "Campos específicos por marketplace (título ML, categoria ML, listing_type, etc.)",
+      "properties": {
+        "mercado_livre": {
+          "type": "object",
+          "properties": {
+            "listing_id": { "type": "string", "description": "ID do anúncio no Mercado Livre" },
+            "titulo": { "type": "string", "description": "Título do anúncio no Mercado Livre" },
+            "categoria_id": { "type": "string", "description": "ID da categoria no Mercado Livre" },
+            "listing_type_id": { "type": "string", "description": "Tipo de anúncio (gold_special, gold_pro, etc.)" },
+            "available_qty": { "type": "number", "description": "Quantidade disponível no anúncio" },
+            "price": { "type": "number", "description": "Preço no anúncio" },
+            "currency_id": { "type": "string", "description": "Moeda (BRL)" },
+            "status": { "type": "string", "description": "Status do anúncio (active, paused, closed)" },
+            "sub_status": { "type": "string", "description": "Sub-status do anúncio" },
+            "url": { "type": "string", "description": "URL do anúncio" },
+            "condition": { "type": "string", "description": "Condição (new, used)" },
+            "attributes": { "type": "object", "description": "Atributos específicos do ML (brand, model, etc.)" },
+            "synced_at": { "type": "string", "description": "Data da última sincronização" }
+          }
+        },
+        "bling": {
+          "type": "object",
+          "properties": {
+            "synced_at": { "type": "string", "description": "Data da última sincronização com o Bling" },
+            "imported_from": { "type": "string", "description": "Empresa de origem da importação" }
+          }
+        }
+      }
     }
   },
   "required": [

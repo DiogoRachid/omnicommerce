@@ -13,8 +13,9 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Building2, Plus, Check, X, Copy, CheckCheck,
-  ExternalLink, LogOut, Loader2, RefreshCw, CheckCircle2, AlertCircle, Save,
+  ExternalLink, LogOut, Loader2, RefreshCw, CheckCircle2, AlertCircle, Save, Download,
 } from 'lucide-react';
+import BlingImportDialog from '@/components/bling/BlingImportDialog';
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 const BLING_CLIENT_ID = 'cc8b8d56d863328ccef20525abc2e7649d03b4fe';
@@ -264,6 +265,7 @@ export default function Companies() {
   const [form, setForm] = useState(emptyCompany);
   const [activeTab, setActiveTab] = useState('dados');
   const [copiedBling, setCopiedBling] = useState(false);
+  const [blingImportCompany, setBlingImportCompany] = useState(null);
   const queryClient = useQueryClient();
 
   const { data: companies = [], isLoading } = useQuery({
@@ -385,6 +387,16 @@ export default function Companies() {
                 {c.marketplaces_config?.magalu?.enabled && (
                   <Badge variant="outline" className="text-[10px] border-blue-300 text-blue-700">Magalu</Badge>
                 )}
+                {c.bling_integrated && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto h-6 text-[10px] px-2 gap-1"
+                    onClick={(e) => { e.stopPropagation(); setBlingImportCompany(c); }}
+                  >
+                    <Download className="w-3 h-3" /> Importar
+                  </Button>
+                )}
                 {countActive(c) === 0 && !c.bling_integrated && (
                   <span className="text-[10px] text-muted-foreground">Sem integrações ativas</span>
                 )}
@@ -393,6 +405,12 @@ export default function Companies() {
           </Card>
         ))}
       </div>
+
+      <BlingImportDialog
+        company={blingImportCompany}
+        open={!!blingImportCompany}
+        onClose={() => setBlingImportCompany(null)}
+      />
 
       {/* ── Dialog de edição ── */}
       <Dialog open={showDialog} onOpenChange={(v) => { if (!v) { setShowDialog(false); setEditingCompany(null); } }}>

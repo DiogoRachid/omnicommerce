@@ -8,9 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Package, Plus, Search, Edit, ToggleLeft, ToggleRight,
-  Trash2, ChevronRight, ChevronDown, Layers, Download, Sparkles, Bot
+  Trash2, ChevronRight, ChevronDown, Layers, Sparkles, Bot
 } from 'lucide-react';
-import BlingImportDialog from '@/components/bling/BlingImportDialog';
 import ProductFilters, { applyFilters } from '@/components/products/ProductFilters';
 import { getCategoriaLabel, formatBRL, calcTributos } from '@/lib/productCategories';
 import ProductAIModal from '@/components/products/ProductAIModal';
@@ -378,7 +377,6 @@ export default function Products() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState({});
   const [expanded, setExpanded] = useState({});
-  const [showBlingImport, setShowBlingImport] = useState(false);
   const [showAIModal, setShowAIModal] = useState(false);
   const [filters, setFilters] = useState([]);
   const [page, setPage] = useState(0);
@@ -469,8 +467,6 @@ export default function Products() {
     queryClient.invalidateQueries({ queryKey: ['products'] });
   };
 
-  const companyForImport = selectedCompany && selectedCompany !== 'all' ? { id: selectedCompany } : null;
-
   // Cabeçalho com resize handle
   const Th = ({ children, right, colKey }) => (
     <th
@@ -497,9 +493,6 @@ export default function Products() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => setShowBlingImport(true)} className="gap-2">
-            <Download className="w-4 h-4" /> Importar do Bling
-          </Button>
           <Link to="/notas-fiscais/importar">
             <Button variant="outline">Importar XML</Button>
           </Link>
@@ -613,7 +606,6 @@ export default function Products() {
       )}
 
       <ProductManagerChat open={showManagerChat} onClose={() => setShowManagerChat(false)} selectedCompany={selectedCompany} />
-      <BlingImportDialog company={companyForImport} open={showBlingImport} onClose={() => setShowBlingImport(false)} />
       <ProductAIModal open={showAIModal} onClose={() => setShowAIModal(false)} selectedCompany={selectedCompany} />
       <ProductDetailModal
         product={detailProduct}
