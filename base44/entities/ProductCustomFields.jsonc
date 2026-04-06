@@ -1,0 +1,41 @@
+{
+  "name": "ProductCustomFields",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "ID do produto"
+    },
+    "category_id": {
+      "type": "string",
+      "description": "ID da categoria"
+    },
+    "marketplace": {
+      "type": "string",
+      "enum": [
+        "mercado_livre",
+        "shopee",
+        "amazon",
+        "magalu"
+      ],
+      "description": "Marketplace"
+    },
+    "campos": {
+      "type": "object",
+      "description": "Valores dos campos customizados: { id_campo: valor }"
+    },
+    "preenchido_por_ia": {
+      "type": "boolean",
+      "default": false
+    },
+    "ultima_atualizacao": {
+      "type": "string",
+      "format": "date"
+    }
+  },
+  "required": [
+    "product_id",
+    "category_id",
+    "marketplace"
+  ]
+}

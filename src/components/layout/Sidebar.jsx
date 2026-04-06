@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, Receipt,
   FileText, Users, BarChart3, Store, Settings, Building2,
-  ChevronLeft, ChevronRight, Bot, Wand2, RefreshCw
+  ChevronLeft, ChevronRight, Bot, Wand2, RefreshCw, Tag
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -11,6 +11,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
   { icon: Building2, label: 'Empresas', path: '/empresas' },
   { icon: Package, label: 'Produtos', path: '/produtos' },
+  { icon: Tag, label: 'Categorias', path: '/categorias' },
   { icon: Warehouse, label: 'Estoque', path: '/estoque' },
   { icon: ShoppingCart, label: 'Vendas', path: '/vendas' },
   { icon: FileText, label: 'Notas Fiscais', path: '/notas-fiscais' },

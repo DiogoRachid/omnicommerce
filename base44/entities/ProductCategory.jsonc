@@ -1,0 +1,89 @@
+{
+  "name": "ProductCategory",
+  "type": "object",
+  "properties": {
+    "nome": {
+      "type": "string",
+      "description": "Nome da categoria"
+    },
+    "icone": {
+      "type": "string",
+      "description": "Emoji ou \u00edcone da categoria"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o da categoria"
+    },
+    "categoria_pai_id": {
+      "type": "string",
+      "description": "ID da categoria pai (para subcategorias)"
+    },
+    "variacoes_padrao": {
+      "type": "array",
+      "description": "Varia\u00e7\u00f5es padr\u00e3o da categoria",
+      "items": {
+        "type": "object",
+        "properties": {
+          "nome": {
+            "type": "string"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": [
+              "texto",
+              "numero",
+              "lista",
+              "boolean"
+            ]
+          },
+          "obrigatorio": {
+            "type": "boolean"
+          },
+          "opcoes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "campos_marketplace": {
+      "type": "object",
+      "description": "Campos customizados por marketplace",
+      "properties": {
+        "mercado_livre": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "shopee": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "amazon": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "magalu": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "nome"
+  ]
+}
