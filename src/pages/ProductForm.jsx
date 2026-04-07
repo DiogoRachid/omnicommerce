@@ -9,10 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Save, Plus, X, Layers } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Layers, Store } from 'lucide-react';
 import ProductPhotos from '@/components/products/ProductPhotos';
 import { CATEGORIAS } from '@/lib/productCategories';
 import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
+import MarketplaceCategoryFieldsModal from '@/components/products/MarketplaceCategoryFieldsModal';
 
 const emptyProduct = {
   sku: '', ean: '', nome: '', descricao: '', marca: '',
@@ -40,6 +41,7 @@ export default function ProductForm() {
   const [newAttrKey, setNewAttrKey] = useState('');
   const [newAttrVal, setNewAttrVal] = useState('');
   const [showVariationsModal, setShowVariationsModal] = useState(false);
+  const [showMarketplaceFields, setShowMarketplaceFields] = useState(false);
 
   const { data: product } = useQuery({
     queryKey: ['product', productId],
@@ -129,6 +131,12 @@ export default function ProductForm() {
           <h1 className="text-2xl font-bold">{isEditing ? 'Editar Produto' : 'Novo Produto'}</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Preencha os dados do produto</p>
         </div>
+        {isEditing && (
+          <Button variant="outline" className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50" onClick={() => setShowMarketplaceFields(true)}>
+            <Store className="w-4 h-4" />
+            Categoria no Marketplace
+          </Button>
+        )}
         {isEditing && form.tipo === 'pai' && (
           <Button variant="outline" className="gap-2 border-orange-300 text-orange-700 hover:bg-orange-50" onClick={() => setShowVariationsModal(true)}>
             <Layers className="w-4 h-4" />
@@ -330,6 +338,14 @@ export default function ProductForm() {
           onClose={() => setShowVariationsModal(false)}
           pai={product?.[0] || form}
           variacoes={variacoes}
+        />
+      )}
+
+      {isEditing && showMarketplaceFields && (
+        <MarketplaceCategoryFieldsModal
+          open={showMarketplaceFields}
+          onClose={() => setShowMarketplaceFields(false)}
+          product={product?.[0] || form}
         />
       )}
     </div>
