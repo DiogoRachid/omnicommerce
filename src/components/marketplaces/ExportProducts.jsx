@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,32 +11,99 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, Loader2, AlertCircle, CheckCircle2, Search } from 'lucide-react';
+import { Upload, Loader2, AlertCircle, CheckCircle2, Search, ChevronRight, ChevronDown } from 'lucide-react';
+import { toast } from 'sonner';
 
 const MP_NAMES = { mercado_livre: 'Mercado Livre', shopee: 'Shopee', amazon: 'Amazon' };
 
-const STATUS_LABELS = {
-  novo: { label: 'Novo', color: 'bg-blue-100 text-blue-700' },
-  ja_cadastrado: { label: 'Já cadastrado', color: 'bg-yellow-100 text-yellow-700' },
-  atualizado: { label: 'Atualizado', color: 'bg-green-100 text-green-700' },
-  nao_alterado: { label: 'Não alterado', color: 'bg-gray-100 text-gray-600' },
-};
+// ── Ícone de marketplace colorido / cinza / vermelho ──────────────────────────
+function MpIcon({ marketplace, status }) {
+  // status: 'publicado' | 'erro' | 'nao_publicado'
+  const configs = {
+    mercado_livre: {
+      publicado: { bg: 'bg-yellow-400', text: 'text-black', label: 'ML' },
+      erro:       { bg: 'bg-red-500',    text: 'text-white', label: 'ML' },
+      nao_publicado: { bg: 'bg-gray-200', text: 'text-gray-400', label: 'ML' },
+    },
+    shopee: {
+      publicado: { bg: 'bg-orange-500', text: 'text-white', label: 'SH' },
+      erro:      { bg: 'bg-red-500',    text: 'text-white', label: 'SH' },
+      nao_publicado: { bg: 'bg-gray-200', text: 'text-gray-400', label: 'SH' },
+    },
+    amazon: {
+      publicado: { bg: 'bg-amber-500', text: 'text-white', label: 'AZ' },
+      erro:      { bg: 'bg-red-500',   text: 'text-white', label: 'AZ' },
+      nao_publicado: { bg: 'bg-gray-200', text: 'text-gray-400', label: 'AZ' },
+    },
+  };
+  const cfg = configs[marketplace]?.[status] ?? configs.mercado_livre.nao_publicado;
+  return (
+    <div className={`w-5 h-5 rounded ${cfg.bg} flex items-center justify-center shrink-0`} title={MP_NAMES[marketplace] || marketplace}>
+      <span className={`text-[7px] font-bold ${cfg.text}`}>{cfg.label}</span>
+    </div>
+  );
+}
 
-function StatusBadge({ status }) {
-  const s = STATUS_LABELS[status] || STATUS_LABELS.novo;
-  return <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>;
+// Resolve o status de publicação de um produto num marketplace
+function getMpStatus(productId, marketplace, listings) {
+  const listing = listings.find(l => l.product_id === productId && l.marketplace === marketplace);
+  if (!listing) return 'nao_publicado';
+  if (listing.status === 'erro') return 'erro';
+  if (listing.status === 'ativo' || listing.status === 'pausado') return 'publicado';
+  return 'nao_publicado';
+}
+
+const ALL_MARKETPLACES = ['mercado_livre', 'shopee', 'amazon'];
+
+// ── Botão Publicar ML com ícone de status ─────────────────────────────────────
+function MlPublishButton({ product, listings, onOpen, selectedMp }) {
+  if (selectedMp !== 'mercado_livre') return null;
+  const status = getMpStatus(product.id, 'mercado_livre', listings);
+  const colorClass =
+    status === 'publicado' ? 'border-yellow-400 text-yellow-700 hover:bg-yellow-50' :
+    status === 'erro'      ? 'border-red-400 text-red-600 hover:bg-red-50' :
+                             'border-gray-300 text-gray-500 hover:bg-gray-50';
+  const label = status === 'publicado' ? 'Publicado' : status === 'erro' ? 'Erro' : 'Publicar';
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className={`text-[11px] h-7 gap-1.5 ${colorClass}`}
+      onClick={() => onOpen(product)}
+    >
+      <MpIcon marketplace="mercado_livre" status={status} />
+      {label}
+    </Button>
+  );
+}
+
+// ── Helpers de agrupamento ────────────────────────────────────────────────────
+function parseCT(v) {
+  const parts = (v.variacoes_atributos || '').split('|').map(s => s.trim());
+  return { cor: parts[0] || '', tamanho: parts[1] || '' };
+}
+
+function groupByCor(variacoes) {
+  const map = {};
+  variacoes.forEach(v => {
+    const { cor } = parseCT(v);
+    const key = cor || v.nome;
+    if (!map[key]) map[key] = [];
+    map[key].push(v);
+  });
+  return map;
 }
 
 export default function ExportProducts({ companies, selectedCompany }) {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ nome: '', sku: '', ean: '', marketplace: 'mercado_livre' });
   const [selected, setSelected] = useState({});
+  const [expanded, setExpanded] = useState({}); // { paiId: true, 'paiId-cor-Azul': true }
   const [exporting, setExporting] = useState(false);
   const [conflictQueue, setConflictQueue] = useState([]);
   const [currentConflict, setCurrentConflict] = useState(null);
   const [exportLog, setExportLog] = useState([]);
 
-  // ── Estado do modal de publicação ML ─────────────────────────────────────
   const [mlPublishProduct, setMlPublishProduct] = useState(null);
   const [mlForm, setMlForm] = useState({ title: '', price: '', quantity: '', category_id: '', category_name: '' });
   const [mlCategorySearch, setMlCategorySearch] = useState('');
@@ -60,8 +127,20 @@ export default function ExportProducts({ companies, selectedCompany }) {
     queryFn: () => base44.entities.MarketplaceListing.list('-created_date', 500),
   });
 
-  const filtered = products.filter(p => {
-    if (!p.ativo) return false;
+  // Separa pais e variações
+  const variacoesPorPai = useMemo(() => {
+    const map = {};
+    products.filter(p => p.tipo === 'variacao').forEach(v => {
+      if (!map[v.produto_pai_id]) map[v.produto_pai_id] = [];
+      map[v.produto_pai_id].push(v);
+    });
+    return map;
+  }, [products]);
+
+  // Somente produtos raiz (pai ou simples)
+  const rootProducts = products.filter(p => p.tipo !== 'variacao' && p.ativo);
+
+  const filtered = rootProducts.filter(p => {
     if (filters.nome && !p.nome.toLowerCase().includes(filters.nome.toLowerCase())) return false;
     if (filters.sku && !(p.sku || '').toLowerCase().includes(filters.sku.toLowerCase())) return false;
     if (filters.ean && !(p.ean || '').includes(filters.ean)) return false;
@@ -77,6 +156,8 @@ export default function ExportProducts({ companies, selectedCompany }) {
     filtered.forEach(p => { s[p.id] = v; });
     setSelected(s);
   };
+
+  const toggleExpand = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
   const logAction = async (tipo, status, p, mensagem, extra = {}) => {
     const entry = {
@@ -218,8 +299,173 @@ export default function ExportProducts({ companies, selectedCompany }) {
       }
     } catch (e) {
       setMlPublishMsg({ type: 'error', text: 'Erro ao publicar: ' + e.message });
+      // Atualiza listing para status erro se já existir
+      const listing = getListing(mlPublishProduct.id);
+      if (listing) {
+        await base44.entities.MarketplaceListing.update(listing.id, { status: 'erro', erro: e.message });
+        queryClient.invalidateQueries({ queryKey: ['listings'] });
+      }
     }
     setMlPublishing(false);
+  };
+
+  // ── Render de linha: produto pai ──────────────────────────────────────────
+  const renderPaiRow = (p) => {
+    const variacoes = variacoesPorPai[p.id] || [];
+    const isPai = p.tipo === 'pai' && variacoes.length > 0;
+    const isExp = !!expanded[p.id];
+    const listing = getListing(p.id);
+    const mpStatus = getMpStatus(p.id, filters.marketplace, listings);
+
+    return (
+      <React.Fragment key={p.id}>
+        <TableRow
+          className={`cursor-pointer ${isExp ? 'bg-orange-50/60' : ''} hover:bg-accent/40`}
+          onClick={() => setSelected(s => ({ ...s, [p.id]: !s[p.id] }))}
+        >
+          <TableCell onClick={e => e.stopPropagation()}>
+            <Checkbox checked={!!selected[p.id]} onCheckedChange={v => setSelected(s => ({ ...s, [p.id]: v }))} />
+          </TableCell>
+          <TableCell className="font-medium text-sm">
+            <div className="flex items-center gap-1.5">
+              {isPai && (
+                <button
+                  className="p-0.5 rounded hover:bg-orange-200 transition-colors shrink-0"
+                  onClick={e => { e.stopPropagation(); toggleExpand(p.id); }}
+                >
+                  {isExp
+                    ? <ChevronDown className="w-3.5 h-3.5 text-orange-600" />
+                    : <ChevronRight className="w-3.5 h-3.5 text-orange-600" />}
+                </button>
+              )}
+              <span className="truncate max-w-[150px]">{p.nome}</span>
+              {isPai && <Badge variant="outline" className="text-[9px] px-1 shrink-0">Pai</Badge>}
+            </div>
+          </TableCell>
+          <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
+          <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
+          <TableCell className="text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
+          <TableCell className="text-right text-sm">{isPai ? <span className="text-muted-foreground">—</span> : (p.estoque_atual ?? 0)}</TableCell>
+          <TableCell>
+            <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">
+              {p.ativo ? 'Ativo' : 'Inativo'}
+            </Badge>
+          </TableCell>
+          {/* Ícones de marketplace */}
+          <TableCell>
+            <div className="flex items-center gap-1">
+              {ALL_MARKETPLACES.map(mp => (
+                <MpIcon key={mp} marketplace={mp} status={getMpStatus(p.id, mp, listings)} />
+              ))}
+            </div>
+          </TableCell>
+          <TableCell className="text-xs text-muted-foreground">
+            {listing?.ultima_sync ? new Date(listing.ultima_sync).toLocaleDateString('pt-BR') : '-'}
+          </TableCell>
+          <TableCell onClick={e => e.stopPropagation()}>
+            <MlPublishButton product={p} listings={listings} onOpen={openMlPublish} selectedMp={filters.marketplace} />
+          </TableCell>
+        </TableRow>
+
+        {/* Linhas de cor (1ª variação) */}
+        {isPai && isExp && (() => {
+          const grouped = groupByCor(variacoes);
+          return Object.entries(grouped).map(([cor, vars]) => {
+            const corKey = `${p.id}-cor-${cor}`;
+            const isExpCor = !!expanded[corKey];
+            const hasTamanho = vars.some(v => parseCT(v).tamanho);
+            return (
+              <React.Fragment key={corKey}>
+                <TableRow
+                  className="bg-orange-50/40 hover:bg-orange-100/50 cursor-pointer"
+                  onClick={() => hasTamanho && toggleExpand(corKey)}
+                >
+                  <TableCell />
+                  <TableCell colSpan={1} className="py-1.5">
+                    <div className="flex items-center gap-2 pl-8 text-xs font-semibold text-orange-700">
+                      {hasTamanho && (
+                        isExpCor
+                          ? <ChevronDown className="w-3.5 h-3.5" />
+                          : <ChevronRight className="w-3.5 h-3.5" />
+                      )}
+                      <span>🎨 {cor}</span>
+                      <span className="font-normal text-orange-500">({vars.length})</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-mono py-1.5">
+                    {vars[0]?.sku || '-'}
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground font-mono py-1.5">
+                    {vars[0]?.ean || '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-xs py-1.5">
+                    {vars[0]?.preco_venda ? `R$ ${vars[0].preco_venda.toFixed(2)}` : '-'}
+                  </TableCell>
+                  <TableCell className="text-right text-xs py-1.5 text-muted-foreground">
+                    {vars.reduce((s, v) => s + (v.estoque_atual || 0), 0)}
+                  </TableCell>
+                  <TableCell className="py-1.5" />
+                  {/* Ícones por cor */}
+                  <TableCell className="py-1.5">
+                    <div className="flex items-center gap-1">
+                      {ALL_MARKETPLACES.map(mp => (
+                        <MpIcon key={mp} marketplace={mp} status={getMpStatus(vars[0]?.id, mp, listings)} />
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-1.5" />
+                  <TableCell className="py-1.5" onClick={e => e.stopPropagation()}>
+                    <MlPublishButton product={vars[0]} listings={listings} onOpen={openMlPublish} selectedMp={filters.marketplace} />
+                  </TableCell>
+                </TableRow>
+
+                {/* Tamanhos (2ª variação) */}
+                {hasTamanho && isExpCor && vars.map(v => {
+                  const { tamanho } = parseCT(v);
+                  return (
+                    <TableRow
+                      key={v.id}
+                      className="bg-slate-50/40 hover:bg-slate-100/50 cursor-pointer"
+                      onClick={() => setSelected(s => ({ ...s, [v.id]: !s[v.id] }))}
+                    >
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <Checkbox checked={!!selected[v.id]} onCheckedChange={val => setSelected(s => ({ ...s, [v.id]: val }))} />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex items-center gap-1.5 pl-16 text-xs text-muted-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                          {tamanho || v.nome}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs py-1.5">{v.sku || '-'}</TableCell>
+                      <TableCell className="font-mono text-xs py-1.5">{v.ean || '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-1.5">{v.preco_venda ? `R$ ${v.preco_venda.toFixed(2)}` : '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-1.5">{v.estoque_atual ?? 0}</TableCell>
+                      <TableCell className="py-1.5" />
+                      <TableCell className="py-1.5">
+                        <div className="flex items-center gap-1">
+                          {ALL_MARKETPLACES.map(mp => (
+                            <MpIcon key={mp} marketplace={mp} status={getMpStatus(v.id, mp, listings)} />
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground py-1.5">
+                        {listings.find(l => l.product_id === v.id && l.marketplace === filters.marketplace)?.ultima_sync
+                          ? new Date(listings.find(l => l.product_id === v.id && l.marketplace === filters.marketplace).ultima_sync).toLocaleDateString('pt-BR')
+                          : '-'}
+                      </TableCell>
+                      <TableCell className="py-1.5" onClick={e => e.stopPropagation()}>
+                        <MlPublishButton product={v} listings={listings} onOpen={openMlPublish} selectedMp={filters.marketplace} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </React.Fragment>
+            );
+          });
+        })()}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -260,6 +506,14 @@ export default function ExportProducts({ companies, selectedCompany }) {
         </CardContent>
       </Card>
 
+      {/* Legenda de ícones */}
+      <div className="flex items-center gap-4 text-xs text-muted-foreground px-1">
+        <span className="font-medium">Legenda:</span>
+        <span className="flex items-center gap-1"><MpIcon marketplace="mercado_livre" status="nao_publicado" /> Não publicado</span>
+        <span className="flex items-center gap-1"><MpIcon marketplace="mercado_livre" status="publicado" /> Publicado</span>
+        <span className="flex items-center gap-1"><MpIcon marketplace="mercado_livre" status="erro" /> Erro</span>
+      </div>
+
       {/* Tabela */}
       <Card>
         <CardHeader className="pb-2">
@@ -297,47 +551,7 @@ export default function ExportProducts({ companies, selectedCompany }) {
                   </TableCell>
                 </TableRow>
               )}
-              {filtered.map(p => {
-                const listing = getListing(p.id);
-                return (
-                  <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelected(s => ({ ...s, [p.id]: !s[p.id] }))}>
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <Checkbox checked={!!selected[p.id]} onCheckedChange={v => setSelected(s => ({ ...s, [p.id]: v }))} />
-                    </TableCell>
-                    <TableCell className="font-medium text-sm max-w-[160px] truncate">{p.nome}</TableCell>
-                    <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
-                    <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{p.estoque_atual ?? 0}</TableCell>
-                    <TableCell>
-                      <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">
-                        {p.ativo ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={listing ? 'ja_cadastrado' : 'novo'} />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {listing?.ultima_sync ? new Date(listing.ultima_sync).toLocaleDateString('pt-BR') : '-'}
-                    </TableCell>
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      {filters.marketplace === 'mercado_livre' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-[11px] h-7 gap-1 border-yellow-400 text-yellow-700 hover:bg-yellow-50"
-                          onClick={() => openMlPublish(p)}
-                        >
-                          <div className="w-3.5 h-3.5 rounded bg-yellow-400 flex items-center justify-center shrink-0">
-                            <span className="text-black text-[6px] font-bold">ML</span>
-                          </div>
-                          Publicar
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {filtered.map(p => renderPaiRow(p))}
             </TableBody>
           </Table>
         </div>
