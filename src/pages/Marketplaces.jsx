@@ -16,6 +16,7 @@ import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
 import ExportProducts from '@/components/marketplaces/ExportProducts';
 import OperationLogs from '@/components/marketplaces/OperationLogs';
+import BlingSection from '@/components/marketplaces/BlingSection';
 
 const marketplaceNames = {
   mercado_livre: 'Mercado Livre',
@@ -127,6 +128,11 @@ export default function Marketplaces() {
     queryFn: () => base44.entities.Company.list('-created_date', 100),
   });
 
+  const { data: blingProducts = [] } = useQuery({
+    queryKey: ['bling-products'],
+    queryFn: () => base44.entities.Product.filter({ origem: 'importacao' }, '-created_date', 50),
+  });
+
   const marketplaceStats = ['mercado_livre', 'shopee', 'amazon'].map(mp => {
     const mpListings = listings.filter(l => l.marketplace === mp);
     return {
@@ -147,7 +153,34 @@ export default function Marketplaces() {
         </p>
       </div>
 
-      {/* Stats cards — mantidos */}
+      {/* Stats cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Bling card */}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-orange-500 flex items-center justify-center shrink-0">
+                  <span className="text-white text-xs font-bold">B</span>
+                </div>
+                <h3 className="font-semibold">Bling ERP</h3>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div>
+                <p className="text-lg font-bold">{blingProducts.filter(p => p.tipo !== 'variacao').length}</p>
+                <p className="text-xs text-muted-foreground">Produtos</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-orange-600">{blingProducts.filter(p => p.tipo === 'variacao').length}</p>
+                <p className="text-xs text-muted-foreground">Variações</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Marketplaces stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {marketplaceStats.map((mp) => (
           <Card key={mp.id}>
@@ -178,6 +211,12 @@ export default function Marketplaces() {
       {/* Tabs */}
       <Tabs defaultValue="buscar">
         <TabsList className="flex-wrap h-auto gap-1">
+          <TabsTrigger value="bling" className="gap-1.5 text-xs">
+            <div className="w-3.5 h-3.5 rounded bg-orange-500 flex items-center justify-center shrink-0">
+              <span className="text-white text-[8px] font-bold">B</span>
+            </div>
+            Bling
+          </TabsTrigger>
           <TabsTrigger value="buscar" className="gap-1.5 text-xs">
             <Download className="w-3.5 h-3.5" /> Buscar Produtos
           </TabsTrigger>
@@ -194,6 +233,11 @@ export default function Marketplaces() {
             <ClipboardList className="w-3.5 h-3.5" /> Logs
           </TabsTrigger>
         </TabsList>
+
+        {/* Bling */}
+        <TabsContent value="bling" className="mt-4">
+          <BlingSection selectedCompany={selectedCompany} />
+        </TabsContent>
 
         {/* Testar Conexão */}
         <TabsContent value="testar" className="mt-4">
