@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Save, Plus, X, Layers, Store } from 'lucide-react';
 import ProductPhotos from '@/components/products/ProductPhotos';
-import { CATEGORIAS } from '@/lib/productCategories';
+
 import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 import MarketplaceCategoryFieldsModal from '@/components/products/MarketplaceCategoryFieldsModal';
 
@@ -47,6 +47,11 @@ export default function ProductForm() {
     queryKey: ['product', productId],
     queryFn: () => base44.entities.Product.filter({ id: productId }),
     enabled: isEditing,
+  });
+
+  const { data: categorias = [] } = useQuery({
+    queryKey: ['productCategories'],
+    queryFn: () => base44.entities.ProductCategory.list('nome', 200),
   });
 
   const { data: variacoes = [] } = useQuery({
@@ -179,8 +184,8 @@ export default function ProductForm() {
             <Select value={form.categoria || ''} onValueChange={(v) => updateField('categoria', v)}>
               <SelectTrigger><SelectValue placeholder="Selecione a categoria..." /></SelectTrigger>
               <SelectContent>
-                {CATEGORIAS.map(c => (
-                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                {categorias.filter(c => c.ativo !== false).map(c => (
+                  <SelectItem key={c.id} value={c.nome}>{c.icone ? `${c.icone} ` : ''}{c.nome}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
