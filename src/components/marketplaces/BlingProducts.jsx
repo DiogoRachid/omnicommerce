@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,9 +10,25 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Download, Upload, Search, Loader2, AlertCircle, CheckCircle2, RefreshCw, ExternalLink } from 'lucide-react';
+import { Download, Upload, Search, Loader2, AlertCircle, CheckCircle2, ChevronRight, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { askBlingAgentJSON } from '@/lib/blingAgent';
+
+// ── helpers hierarquia ────────────────────────────────────────────────────────
+function parseCT(v) {
+  const parts = (v.variacoes_atributos || '').split('|').map(s => s.trim());
+  return { cor: parts[0] || '', tamanho: parts[1] || '' };
+}
+function groupByCor(variacoes) {
+  const map = {};
+  variacoes.forEach(v => {
+    const { cor } = parseCT(v);
+    const key = cor || v.nome;
+    if (!map[key]) map[key] = [];
+    map[key].push(v);
+  });
+  return map;
+}
 
 // ── Buscar produtos do Bling ──────────────────────────────────────────────────
 function BlingImport({ localProducts }) {
@@ -250,6 +266,7 @@ function BlingImport({ localProducts }) {
 function BlingExport({ selectedCompany }) {
   const [filters, setFilters] = useState({ nome: '', sku: '', ean: '' });
   const [selected, setSelected] = useState({});
+  const [expanded, setExpanded] = useState({});
   const [exporting, setExporting] = useState(false);
   const [exportLog, setExportLog] = useState([]);
 
@@ -263,8 +280,16 @@ function BlingExport({ selectedCompany }) {
     },
   });
 
-  const rootProducts = products.filter(p => p.tipo !== 'variacao' && p.ativo);
+  const variacoesPorPai = useMemo(() => {
+    const map = {};
+    products.filter(p => p.tipo === 'variacao').forEach(v => {
+      if (!map[v.produto_pai_id]) map[v.produto_pai_id] = [];
+      map[v.produto_pai_id].push(v);
+    });
+    return map;
+  }, [products]);
 
+  const rootProducts = products.filter(p => p.tipo !== 'variacao' && p.ativo);
   const filtered = rootProducts.filter(p => {
     if (filters.nome && !p.nome.toLowerCase().includes(filters.nome.toLowerCase())) return false;
     if (filters.sku && !(p.sku || '').toLowerCase().includes(filters.sku.toLowerCase())) return false;
@@ -273,14 +298,40 @@ function BlingExport({ selectedCompany }) {
   });
 
   const selectedCount = Object.values(selected).filter(Boolean).length;
+
   const toggleAll = (v) => {
     const s = {};
-    filtered.forEach(p => { s[p.id] = v; });
+    filtered.forEach(p => {
+      s[p.id] = v;
+      (variacoesPorPai[p.id] || []).forEach(va => { s[va.id] = v; });
+    });
     setSelected(s);
   };
 
+  const togglePai = (p, v) => {
+    setSelected(s => {
+      const next = { ...s, [p.id]: v };
+      (variacoesPorPai[p.id] || []).forEach(va => { next[va.id] = v; });
+      return next;
+    });
+  };
+
+  const toggleCor = (vars, v) => {
+    setSelected(s => {
+      const next = { ...s };
+      vars.forEach(va => { next[va.id] = v; });
+      return next;
+    });
+  };
+
+  const toggleExpand = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+
   const handleExport = async () => {
-    const toExport = filtered.filter(p => selected[p.id]);
+    const toExport = Object.entries(selected)
+      .filter(([, v]) => v)
+      .map(([id]) => products.find(p => p.id === id))
+      .filter(Boolean);
+
     setExporting(true);
     const log = [];
     for (const p of toExport) {
@@ -303,6 +354,98 @@ Retorne apenas {"success": true} se criado com sucesso.`
     setExportLog(log);
     setExporting(false);
     toast.success(`${log.filter(l => l.status === 'sucesso').length} produto(s) exportado(s) para o Bling.`);
+  };
+
+  const renderPaiRow = (p) => {
+    const variacoes = variacoesPorPai[p.id] || [];
+    const isPai = p.tipo === 'pai' && variacoes.length > 0;
+    const isExp = !!expanded[p.id];
+
+    return (
+      <React.Fragment key={p.id}>
+        <TableRow
+          className={`cursor-pointer ${isExp ? 'bg-orange-50/60' : ''} hover:bg-accent/40`}
+          onClick={() => togglePai(p, !selected[p.id])}
+        >
+          <TableCell onClick={e => e.stopPropagation()}>
+            <Checkbox checked={!!selected[p.id]} onCheckedChange={v => togglePai(p, v)} />
+          </TableCell>
+          <TableCell className="font-medium text-sm">
+            <div className="flex items-center gap-1.5">
+              {isPai && (
+                <button className="p-0.5 rounded hover:bg-orange-200 transition-colors shrink-0"
+                  onClick={e => { e.stopPropagation(); toggleExpand(p.id); }}>
+                  {isExp ? <ChevronDown className="w-3.5 h-3.5 text-orange-600" /> : <ChevronRight className="w-3.5 h-3.5 text-orange-600" />}
+                </button>
+              )}
+              <span className="truncate max-w-[160px]">{p.nome}</span>
+              {isPai && <Badge variant="outline" className="text-[9px] px-1 shrink-0">Pai</Badge>}
+            </div>
+          </TableCell>
+          <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
+          <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
+          <TableCell className="text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
+          <TableCell className="text-right text-sm">{isPai ? <span className="text-muted-foreground">—</span> : (p.estoque_atual ?? 0)}</TableCell>
+          <TableCell>
+            <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">{p.ativo ? 'Ativo' : 'Inativo'}</Badge>
+          </TableCell>
+        </TableRow>
+
+        {isPai && isExp && (() => {
+          const grouped = groupByCor(variacoes);
+          return Object.entries(grouped).map(([cor, vars]) => {
+            const corKey = `${p.id}-cor-${cor}`;
+            const isExpCor = !!expanded[corKey];
+            const hasTamanho = vars.some(v => parseCT(v).tamanho);
+            return (
+              <React.Fragment key={corKey}>
+                <TableRow className="bg-orange-50/40 hover:bg-orange-100/50 cursor-pointer"
+                  onClick={() => hasTamanho && toggleExpand(corKey)}>
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <Checkbox checked={vars.every(v => !!selected[v.id])} onCheckedChange={v => toggleCor(vars, v)} />
+                  </TableCell>
+                  <TableCell className="py-1.5">
+                    <div className="flex items-center gap-2 pl-8 text-xs font-semibold text-orange-700">
+                      {hasTamanho && (isExpCor ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}
+                      <span>🎨 {cor}</span>
+                      <span className="font-normal text-orange-500">({vars.length})</span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="font-mono text-xs py-1.5">{vars[0]?.sku || '-'}</TableCell>
+                  <TableCell className="font-mono text-xs py-1.5">{vars[0]?.ean || '-'}</TableCell>
+                  <TableCell className="text-right text-xs py-1.5">{vars[0]?.preco_venda ? `R$ ${vars[0].preco_venda.toFixed(2)}` : '-'}</TableCell>
+                  <TableCell className="text-right text-xs py-1.5 text-muted-foreground">{vars.reduce((s, v) => s + (v.estoque_atual || 0), 0)}</TableCell>
+                  <TableCell className="py-1.5" />
+                </TableRow>
+
+                {hasTamanho && isExpCor && vars.map(v => {
+                  const { tamanho } = parseCT(v);
+                  return (
+                    <TableRow key={v.id} className="bg-slate-50/40 hover:bg-slate-100/50 cursor-pointer"
+                      onClick={() => setSelected(s => ({ ...s, [v.id]: !s[v.id] }))}>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <Checkbox checked={!!selected[v.id]} onCheckedChange={val => setSelected(s => ({ ...s, [v.id]: val }))} />
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex items-center gap-1.5 pl-16 text-xs text-muted-foreground">
+                          <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
+                          {tamanho || v.nome}
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs py-1.5">{v.sku || '-'}</TableCell>
+                      <TableCell className="font-mono text-xs py-1.5">{v.ean || '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-1.5">{v.preco_venda ? `R$ ${v.preco_venda.toFixed(2)}` : '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-1.5">{v.estoque_atual ?? 0}</TableCell>
+                      <TableCell className="py-1.5" />
+                    </TableRow>
+                  );
+                })}
+              </React.Fragment>
+            );
+          });
+        })()}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -348,7 +491,7 @@ Retorne apenas {"success": true} se criado com sucesso.`
                 <TableHead className="w-10">
                   <Checkbox checked={selectedCount === filtered.length && filtered.length > 0} onCheckedChange={toggleAll} />
                 </TableHead>
-                <TableHead>Nome</TableHead>
+                <TableHead>Produto</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>EAN</TableHead>
                 <TableHead className="text-right">Preço</TableHead>
@@ -362,21 +505,7 @@ Retorne apenas {"success": true} se criado com sucesso.`
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">Nenhum produto ativo encontrado.</TableCell>
                 </TableRow>
               )}
-              {filtered.map(p => (
-                <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelected(s => ({ ...s, [p.id]: !s[p.id] }))}>
-                  <TableCell onClick={e => e.stopPropagation()}>
-                    <Checkbox checked={!!selected[p.id]} onCheckedChange={v => setSelected(s => ({ ...s, [p.id]: v }))} />
-                  </TableCell>
-                  <TableCell className="font-medium text-sm max-w-[200px] truncate">{p.nome}</TableCell>
-                  <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
-                  <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
-                  <TableCell className="text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
-                  <TableCell className="text-right text-sm">{p.estoque_atual ?? 0}</TableCell>
-                  <TableCell>
-                    <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">{p.ativo ? 'Ativo' : 'Inativo'}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {filtered.map(p => renderPaiRow(p))}
             </TableBody>
           </Table>
         </div>
