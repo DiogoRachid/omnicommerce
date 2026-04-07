@@ -66,6 +66,26 @@ export default function ProductForm() {
     }
   }, [product]);
 
+  // Pré-popula fotos do pai com a primeira foto de cada variação que tiver fotos
+  useEffect(() => {
+    if (!isEditing || form.tipo !== 'pai' || variacoes.length === 0) return;
+    const fotosVariacoes = variacoes
+      .map(v => v.fotos?.[0])
+      .filter(Boolean);
+    if (fotosVariacoes.length === 0) return;
+    setForm(prev => {
+      // Mescla: fotos já existentes no pai + fotos das variações (sem duplicatas)
+      const existing = prev.fotos || [];
+      const merged = [...existing];
+      fotosVariacoes.forEach(url => {
+        if (!merged.includes(url)) merged.push(url);
+      });
+      // Só atualiza se houve mudança
+      if (merged.length === existing.length) return prev;
+      return { ...prev, fotos: merged };
+    });
+  }, [variacoes]);
+
   const saveMutation = useMutation({
     mutationFn: (data) => {
       if (isEditing) return base44.entities.Product.update(productId, data);
