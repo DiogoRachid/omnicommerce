@@ -151,10 +151,32 @@ export default function ExportProducts({ companies, selectedCompany }) {
     listings.find(l => l.product_id === productId && l.marketplace === filters.marketplace);
 
   const selectedCount = Object.values(selected).filter(Boolean).length;
+
   const toggleAll = (v) => {
     const s = {};
-    filtered.forEach(p => { s[p.id] = v; });
+    filtered.forEach(p => {
+      s[p.id] = v;
+      (variacoesPorPai[p.id] || []).forEach(va => { s[va.id] = v; });
+    });
     setSelected(s);
+  };
+
+  // Seleciona pai + todas suas variações
+  const togglePai = (p, v) => {
+    setSelected(s => {
+      const next = { ...s, [p.id]: v };
+      (variacoesPorPai[p.id] || []).forEach(va => { next[va.id] = v; });
+      return next;
+    });
+  };
+
+  // Seleciona todas as variações de uma cor
+  const toggleCor = (vars, v) => {
+    setSelected(s => {
+      const next = { ...s };
+      vars.forEach(va => { next[va.id] = v; });
+      return next;
+    });
   };
 
   const toggleExpand = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
@@ -321,10 +343,10 @@ export default function ExportProducts({ companies, selectedCompany }) {
       <React.Fragment key={p.id}>
         <TableRow
           className={`cursor-pointer ${isExp ? 'bg-orange-50/60' : ''} hover:bg-accent/40`}
-          onClick={() => setSelected(s => ({ ...s, [p.id]: !s[p.id] }))}
+          onClick={() => togglePai(p, !selected[p.id])}
         >
           <TableCell onClick={e => e.stopPropagation()}>
-            <Checkbox checked={!!selected[p.id]} onCheckedChange={v => setSelected(s => ({ ...s, [p.id]: v }))} />
+            <Checkbox checked={!!selected[p.id]} onCheckedChange={v => togglePai(p, v)} />
           </TableCell>
           <TableCell className="font-medium text-sm">
             <div className="flex items-center gap-1.5">
@@ -380,7 +402,12 @@ export default function ExportProducts({ companies, selectedCompany }) {
                   className="bg-orange-50/40 hover:bg-orange-100/50 cursor-pointer"
                   onClick={() => hasTamanho && toggleExpand(corKey)}
                 >
-                  <TableCell />
+                  <TableCell onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      checked={vars.every(v => !!selected[v.id])}
+                      onCheckedChange={v => toggleCor(vars, v)}
+                    />
+                  </TableCell>
                   <TableCell colSpan={1} className="py-1.5">
                     <div className="flex items-center gap-2 pl-8 text-xs font-semibold text-orange-700">
                       {hasTamanho && (
