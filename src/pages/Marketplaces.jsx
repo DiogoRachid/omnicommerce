@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw, ExternalLink, Package } from 'lucide-react';
 import { toast } from 'sonner';
 import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
 import ExportProducts from '@/components/marketplaces/ExportProducts';
 import OperationLogs from '@/components/marketplaces/OperationLogs';
+import BlingProducts from '@/components/marketplaces/BlingProducts';
 
 const marketplaceNames = {
   mercado_livre: 'Mercado Livre',
@@ -127,6 +128,13 @@ export default function Marketplaces() {
     queryFn: () => base44.entities.Company.list('-created_date', 100),
   });
 
+  const { data: blingProducts = [] } = useQuery({
+    queryKey: ['products-bling-count'],
+    queryFn: () => base44.entities.Product.filter({ origem: 'importacao' }, '-created_date', 500),
+  });
+
+  const blingIntegrated = companies.some(c => c.bling_integrated);
+
   const marketplaceStats = ['mercado_livre', 'shopee', 'amazon'].map(mp => {
     const mpListings = listings.filter(l => l.marketplace === mp);
     return {
@@ -147,8 +155,33 @@ export default function Marketplaces() {
         </p>
       </div>
 
-      {/* Stats cards — mantidos */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Stats cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card Bling */}
+        <Card className="border-blue-200 bg-blue-50/40">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded bg-blue-600 flex items-center justify-center shrink-0">
+                  <span className="text-white text-[9px] font-bold">B</span>
+                </div>
+                <h3 className="font-semibold">Bling</h3>
+              </div>
+              <Package className="w-5 h-5 text-blue-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div>
+                <p className="text-lg font-bold">{blingProducts.length}</p>
+                <p className="text-xs text-muted-foreground">Importados</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-green-600">{blingIntegrated ? 'Sim' : 'Não'}</p>
+                <p className="text-xs text-muted-foreground">Integrado</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {marketplaceStats.map((mp) => (
           <Card key={mp.id}>
             <CardContent className="p-5">
@@ -184,6 +217,12 @@ export default function Marketplaces() {
           <TabsTrigger value="exportar" className="gap-1.5 text-xs">
             <Upload className="w-3.5 h-3.5" /> Exportar Produtos
           </TabsTrigger>
+          <TabsTrigger value="bling" className="gap-1.5 text-xs">
+            <div className="w-3.5 h-3.5 rounded bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="text-white text-[7px] font-bold">B</span>
+            </div>
+            Bling
+          </TabsTrigger>
           <TabsTrigger value="anuncios" className="gap-1.5 text-xs">
             <Store className="w-3.5 h-3.5" /> Anúncios
           </TabsTrigger>
@@ -208,6 +247,11 @@ export default function Marketplaces() {
         {/* Exportar Produtos */}
         <TabsContent value="exportar" className="mt-4">
           <ExportProducts companies={companies} selectedCompany={selectedCompany} />
+        </TabsContent>
+
+        {/* Bling */}
+        <TabsContent value="bling" className="mt-4">
+          <BlingProducts companies={companies} selectedCompany={selectedCompany} />
         </TabsContent>
 
         {/* Anúncios */}
