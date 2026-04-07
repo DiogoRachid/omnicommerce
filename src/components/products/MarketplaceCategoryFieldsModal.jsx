@@ -1,21 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Save, Loader2, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 const MARKETPLACES = [
-  { key: 'mercado_livre', label: 'Mercado Livre', emoji: '🛒', color: 'text-yellow-700' },
-  { key: 'shopee',        label: 'Shopee',         emoji: '🟠', color: 'text-orange-700' },
-  { key: 'amazon',        label: 'Amazon',          emoji: '📦', color: 'text-blue-700' },
-  { key: 'magalu',        label: 'Magalu',          emoji: '🔵', color: 'text-purple-700' },
+  { key: 'mercado_livre', label: 'Mercado Livre', emoji: '🛒' },
+  { key: 'shopee',        label: 'Shopee',         emoji: '🟠' },
+  { key: 'amazon',        label: 'Amazon',          emoji: '📦' },
+  { key: 'magalu',        label: 'Magalu',          emoji: '🔵' },
 ];
+
+// Matching fuzzy: encontra categoria pelo nome do produto ou campo categoria
+function findCategory(categories, product) {
+  if (!product) return null;
+  const catValue = (product.categoria || '').toLowerCase().trim();
+  const prodNome = (product.nome || '').toLowerCase().trim();
+
+  // 1. Match exato por id
+  let found = categories.find(c => c.id === product.categoria);
+  if (found) return found;
+
+  // 2. Match exato por nome
+  found = categories.find(c => c.nome?.toLowerCase().trim() === catValue);
+  if (found) return found;
+
+  // 3. Match parcial: nome da categoria contém o valor ou vice-versa
+  found = categories.find(c => {
+    const cn = c.nome?.toLowerCase().trim() || '';
+    return cn.includes(catValue) || catValue.includes(cn.split(' ')[0]);
+  });
+  if (found) return found;
+
+  // 4. Match por palavras-chave do nome do produto
+  found = categories.find(c => {
+    const cn = c.nome?.toLowerCase() || '';
+    const words = prodNome.split(' ');
+    return words.some(w => w.length > 3 && cn.includes(w));
+  });
+  return found || null;
+}
 
 function FieldInput({ field, value, onChange }) {
   if (field.tipo === 'lista' && field.opcoes?.length > 0) {
@@ -42,7 +71,7 @@ function FieldInput({ field, value, onChange }) {
   );
 }
 
-function MarketplaceTab({ mp, fields, savedValues, onValuesChange }) {
+function MarketplaceTab({ mp, fields, savedValues, onValuesChange, autoFilling }) {
   if (!fields || fields.length === 0) {
     return (
       <div className="py-8 text-center text-muted-foreground text-sm">
@@ -59,25 +88,30 @@ function MarketplaceTab({ mp, fields, savedValues, onValuesChange }) {
 
   return (
     <div className="space-y-4">
-      {/* Progresso */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all"
-            style={{ width: `${Math.round((preenchidos / fields.length) * 100)}%` }}
+            style={{ width: fields.length ? `${Math.round((preenchidos / fields.length) * 100)}%` : '0%' }}
           />
         </div>
         <span>{preenchidos}/{fields.length} preenchidos</span>
       </div>
 
-      {/* Campos obrigatórios */}
+      {autoFilling && (
+        <div className="flex items-center gap-2 text-xs text-primary bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          Preenchendo automaticamente com IA...
+        </div>
+      )}
+
       {obrigatorios.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-xs font-semibold text-foreground flex items-center gap-1">
             <span className="text-destructive">*</span> Obrigatórios
           </h4>
           {obrigatorios.map(field => (
-            <div key={field.id} className="grid grid-cols-[130px_1fr] gap-3 items-center">
+            <div key={field.id} className="grid grid-cols-[140px_1fr] gap-3 items-center">
               <div>
                 <label className="text-xs font-medium text-foreground">{field.nome}</label>
                 <p className="text-[10px] text-muted-foreground font-mono">{field.id}</p>
@@ -92,12 +126,11 @@ function MarketplaceTab({ mp, fields, savedValues, onValuesChange }) {
         </div>
       )}
 
-      {/* Campos opcionais */}
       {opcionais.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-xs font-semibold text-muted-foreground">Opcionais</h4>
           {opcionais.map(field => (
-            <div key={field.id} className="grid grid-cols-[130px_1fr] gap-3 items-center">
+            <div key={field.id} className="grid grid-cols-[140px_1fr] gap-3 items-center">
               <div>
                 <label className="text-xs font-medium text-foreground">{field.nome}</label>
                 <p className="text-[10px] text-muted-foreground font-mono">{field.id}</p>
@@ -117,30 +150,25 @@ function MarketplaceTab({ mp, fields, savedValues, onValuesChange }) {
 
 export default function MarketplaceCategoryFieldsModal({ open, onClose, product }) {
   const queryClient = useQueryClient();
-  const [values, setValues] = useState({}); // { mp_key: { field_id: value } }
+  const [values, setValues] = useState({});
   const [saving, setSaving] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
+  const [activeTab, setActiveTab] = useState('mercado_livre');
 
-  // Busca a categoria selecionada do produto
   const { data: categories = [] } = useQuery({
     queryKey: ['productCategories'],
     queryFn: () => base44.entities.ProductCategory.list('-created_date', 200),
     enabled: open,
   });
 
-  // Busca campos já salvos deste produto
   const { data: existingFields = [] } = useQuery({
     queryKey: ['productCustomFields', product?.id],
     queryFn: () => base44.entities.ProductCustomFields.filter({ product_id: product.id }),
     enabled: open && !!product?.id,
   });
 
-  // Encontra a categoria do produto pelo nome/slug
-  const productCategory = categories.find(c =>
-    c.nome?.toLowerCase() === product?.categoria?.toLowerCase() ||
-    c.id === product?.categoria
-  );
+  const productCategory = findCategory(categories, product);
 
-  // Inicializa valores com dados já salvos
   useEffect(() => {
     if (!open) return;
     const init = {};
@@ -151,13 +179,67 @@ export default function MarketplaceCategoryFieldsModal({ open, onClose, product 
     setValues(init);
   }, [open, existingFields]);
 
+  // ── Preencher automaticamente com IA ─────────────────────────────────────
+  const handleAutoFill = async () => {
+    if (!productCategory) return;
+    setAutoFilling(true);
+
+    const allFields = productCategory.campos_marketplace || {};
+    const newValues = { ...values };
+
+    try {
+      for (const mp of MARKETPLACES) {
+        const fields = allFields[mp.key] || [];
+        if (fields.length === 0) continue;
+
+        const fieldsList = fields.map(f => `- ${f.nome} (id: ${f.id}, tipo: ${f.tipo}${f.opcoes?.length ? `, opções: ${f.opcoes.join('/')}` : ''}${f.obrigatorio ? ', obrigatório' : ''})`).join('\n');
+
+        const prompt = `Você é um especialista em marketplaces brasileiros.
+
+Produto: "${product.nome}"
+Marca: "${product.marca || 'não informada'}"
+Categoria: "${productCategory.nome}"
+Descrição: "${product.descricao || 'não informada'}"
+Marketplace: ${mp.label}
+
+Preencha os seguintes campos para anunciar este produto no ${mp.label}:
+${fieldsList}
+
+Responda APENAS com um JSON no formato: { "id_do_campo": "valor", ... }
+Use valores realistas e adequados para o produto.
+Para campos de lista, use exatamente uma das opções disponíveis.
+Se não tiver certeza de um campo opcional, omita-o.`;
+
+        const result = await base44.integrations.Core.InvokeLLM({
+          prompt,
+          response_json_schema: {
+            type: 'object',
+            additionalProperties: { type: 'string' },
+          },
+        });
+
+        if (result && typeof result === 'object') {
+          newValues[mp.key] = { ...(newValues[mp.key] || {}), ...result };
+        }
+      }
+
+      setValues(newValues);
+      toast.success('Campos preenchidos automaticamente!');
+    } catch (e) {
+      toast.error('Erro ao preencher automaticamente: ' + e.message);
+    }
+
+    setAutoFilling(false);
+  };
+
+  // ── Salvar ────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!product?.id) return;
     setSaving(true);
     try {
       for (const mp of MARKETPLACES) {
         const mpValues = values[mp.key] || {};
-        const hasValues = Object.values(mpValues).some(v => v?.trim());
+        const hasValues = Object.values(mpValues).some(v => v?.trim?.());
         if (!hasValues) continue;
 
         const existing = existingFields.find(f => f.marketplace === mp.key);
@@ -185,48 +267,64 @@ export default function MarketplaceCategoryFieldsModal({ open, onClose, product 
     setSaving(false);
   };
 
-  // Conta campos obrigatórios faltando por marketplace
   const getMissingCount = (mpKey) => {
-    const mpCategory = productCategory?.campos_marketplace?.[mpKey] || [];
-    const obrigatorios = mpCategory.filter(f => f.obrigatorio);
+    const fields = productCategory?.campos_marketplace?.[mpKey] || [];
+    const obrigatorios = fields.filter(f => f.obrigatorio);
     const filled = values[mpKey] || {};
-    return obrigatorios.filter(f => !filled[f.id]?.trim()).length;
+    return obrigatorios.filter(f => !filled[f.id]?.trim?.()).length;
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[88vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            🏪 Campos por Marketplace
-          </DialogTitle>
-          {productCategory ? (
-            <p className="text-sm text-muted-foreground">
-              Categoria: <strong>{productCategory.icone} {productCategory.nome}</strong> · {product?.nome}
-            </p>
-          ) : (
-            <div className="flex items-center gap-1.5 text-sm text-orange-600">
-              <AlertCircle className="w-4 h-4" />
-              Nenhuma categoria configurada encontrada para "{product?.categoria}".
-              Selecione uma categoria válida no produto.
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                🏪 Campos por Marketplace
+              </DialogTitle>
+              {productCategory ? (
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Categoria: <strong>{productCategory.icone} {productCategory.nome}</strong> · {product?.nome}
+                </p>
+              ) : (
+                <div className="flex items-center gap-1.5 text-sm text-orange-600 mt-0.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>Categoria "{product?.categoria}" não encontrada. Verifique as categorias cadastradas.</span>
+                </div>
+              )}
             </div>
-          )}
+            {productCategory && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAutoFill}
+                disabled={autoFilling}
+                className="gap-1.5 border-primary/40 text-primary hover:bg-primary/5 shrink-0"
+              >
+                {autoFilling
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Sparkles className="w-3.5 h-3.5" />}
+                {autoFilling ? 'Preenchendo...' : 'Preencher Automaticamente'}
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0">
-          <Tabs defaultValue="mercado_livre" className="h-full flex flex-col">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
             <TabsList className="mx-6 mt-4 shrink-0 flex-wrap h-auto gap-1">
               {MARKETPLACES.map(mp => {
                 const missing = getMissingCount(mp.key);
                 const fields = productCategory?.campos_marketplace?.[mp.key] || [];
                 return (
-                  <TabsTrigger key={mp.key} value={mp.key} className="gap-1.5 text-xs relative">
+                  <TabsTrigger key={mp.key} value={mp.key} className="gap-1.5 text-xs">
                     <span>{mp.emoji}</span> {mp.label}
                     {fields.length > 0 && missing === 0 && (
                       <CheckCircle2 className="w-3 h-3 text-green-500" />
                     )}
                     {missing > 0 && (
-                      <span className="ml-1 bg-destructive text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                      <span className="ml-0.5 bg-destructive text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
                         {missing}
                       </span>
                     )}
@@ -243,6 +341,7 @@ export default function MarketplaceCategoryFieldsModal({ open, onClose, product 
                     fields={productCategory?.campos_marketplace?.[mp.key] || []}
                     savedValues={values[mp.key] || {}}
                     onValuesChange={v => setValues(prev => ({ ...prev, [mp.key]: v }))}
+                    autoFilling={autoFilling}
                   />
                 </TabsContent>
               ))}
