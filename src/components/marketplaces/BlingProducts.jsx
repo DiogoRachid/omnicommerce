@@ -327,33 +327,73 @@ function BlingExport({ selectedCompany }) {
   const toggleExpand = (key) => setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
 
   const handleExport = async () => {
-    const toExport = Object.entries(selected)
-      .filter(([, v]) => v)
-      .map(([id]) => products.find(p => p.id === id))
-      .filter(Boolean);
+    // Coleta IDs selecionados
+    const selectedIds = new Set(Object.entries(selected).filter(([, v]) => v).map(([id]) => id));
+
+    // Separa produtos pai selecionados e simples
+    const paisSelecionados = filtered.filter(p => p.tipo === 'pai' && selectedIds.has(p.id));
+    const simplesSelecionados = filtered.filter(p => p.tipo !== 'pai' && selectedIds.has(p.id));
 
     setExporting(true);
     const log = [];
-    for (const p of toExport) {
+
+    // Exporta produtos PAI com variações
+    for (const pai of paisSelecionados) {
+      const variacoes = (variacoesPorPai[pai.id] || []).filter(v => selectedIds.has(v.id));
+      if (variacoes.length === 0) {
+        // Se nenhuma variação selecionada, usa todas
+        variacoes.push(...(variacoesPorPai[pai.id] || []));
+      }
       try {
-        await askBlingAgentJSON(
-          `Crie o produto no Bling com os seguintes dados:
-Nome: ${p.nome}
-Código (SKU): ${p.sku || ''}
-GTIN (EAN): ${p.ean || ''}
-Preço: ${p.preco_venda || 0}
-Unidade: ${p.unidade_medida || 'UN'}
-Situação: Ativo
-Retorne apenas {"success": true} se criado com sucesso.`
-        );
-        log.push({ id: Date.now() + Math.random(), produto: p.nome, status: 'sucesso', mensagem: 'Exportado para o Bling.' });
+        const res = await base44.functions.invoke('blingProxy', {
+          action: 'createProductWithVariacoes',
+          pai,
+          variacoes,
+        });
+        if (res.data?.success) {
+          log.push({ id: Date.now() + Math.random(), produto: pai.nome, status: 'sucesso', mensagem: `Exportado para o Bling. ID: ${res.data.bling_id}` });
+        } else {
+          log.push({ id: Date.now() + Math.random(), produto: pai.nome, status: 'erro', mensagem: res.data?.error || 'Erro desconhecido' });
+        }
+      } catch (e) {
+        log.push({ id: Date.now() + Math.random(), produto: pai.nome, status: 'erro', mensagem: e.message });
+      }
+    }
+
+    // Exporta produtos SIMPLES (sem variação)
+    for (const p of simplesSelecionados) {
+      try {
+        const res = await base44.functions.invoke('blingProxy', {
+          action: 'createProduct',
+          produto: {
+            nome: p.nome,
+            tipo: 'P',
+            formato: 'S',
+            situacao: 'A',
+            codigo: p.sku || '',
+            preco: p.preco_venda || 0,
+          },
+        });
+        if (res.data?.data?.id) {
+          await base44.entities.Product.update(p.id, { bling_id: String(res.data.data.id) });
+          log.push({ id: Date.now() + Math.random(), produto: p.nome, status: 'sucesso', mensagem: `Exportado para o Bling. ID: ${res.data.data.id}` });
+        } else {
+          log.push({ id: Date.now() + Math.random(), produto: p.nome, status: 'erro', mensagem: res.data?.error || 'Erro desconhecido' });
+        }
       } catch (e) {
         log.push({ id: Date.now() + Math.random(), produto: p.nome, status: 'erro', mensagem: e.message });
       }
     }
+
     setExportLog(log);
     setExporting(false);
-    toast.success(`${log.filter(l => l.status === 'sucesso').length} produto(s) exportado(s) para o Bling.`);
+    const successCount = log.filter(l => l.status === 'sucesso').length;
+    const errCount = log.filter(l => l.status === 'erro').length;
+    if (errCount > 0) {
+      toast.error(`${errCount} erro(s). Verifique o log abaixo.`);
+    } else {
+      toast.success(`${successCount} produto(s) exportado(s) para o Bling com sucesso.`);
+    }
   };
 
   const renderPaiRow = (p) => {
