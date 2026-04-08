@@ -355,7 +355,9 @@ Deno.serve(async (req) => {
 
   if (action === 'createProductWithVariacoes') {
     const accessToken = await getValidAccessToken(base44);
-    const { pai, variacoes } = payload;
+
+    const pai = body.pai;
+    const variacoes = body.variacoes || [];
 
     const variacoesBling = variacoes.map(v => {
       let stringVariacao = "";
@@ -395,7 +397,7 @@ Deno.serve(async (req) => {
       });
       return Response.json(data);
     } catch (error) {
-      return Response.json({ error: error.message || 'Erro ao exportar produto' }, { status: 400 });
+      return Response.json({ error: true, message: error.message || 'Erro ao exportar produto' }, { status: 400 });
     }
   }
 
