@@ -87,8 +87,25 @@ async function blingRequest(accessToken, path, options = {}, retries = 3) {
       let msgErro = data?.error?.description || data?.error?.message || 'Erro na API do Bling';
 
       if (data?.error?.fields && Array.isArray(data.error.fields)) {
-        const detalhes = data.error.fields.map(f => f.msg).join(' | ');
-        msgErro += ` Detalhes: ${detalhes}`;
+        let detalhes = [];
+
+        data.error.fields.forEach(f => {
+          if (f.msg && !f.collection) detalhes.push(f.msg);
+
+          if (f.collection && Array.isArray(f.collection)) {
+            f.collection.forEach(item => {
+              if (item.fields && Array.isArray(item.fields)) {
+                item.fields.forEach(subField => {
+                  detalhes.push(`[Variação ${item.index + 1}] ${subField.msg}`);
+                });
+              }
+            });
+          }
+        });
+
+        if (detalhes.length > 0) {
+          msgErro += ` Detalhes: ${detalhes.join(' | ')}`;
+        }
       }
 
       console.error(`[blingRequest] Erro ${res.status} em ${path}:`, JSON.stringify(data));
