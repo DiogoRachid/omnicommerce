@@ -401,7 +401,8 @@ Deno.serve(async (req) => {
       });
       return Response.json(data);
     } catch (error) {
-      return Response.json({ error: true, message: error.message || 'Erro ao exportar produto' }, { status: 400 });
+      const erroCompleto = JSON.stringify(error, Object.getOwnPropertyNames(error));
+      return Response.json({ error: true, message: erroCompleto }, { status: 400 });
     }
   }
 
