@@ -65,8 +65,18 @@ async function blingRequest(accessToken, path, options = {}, retries = 3) {
         ...(options.headers || {}),
       },
     });
-    const data = await res.json();
-    if (res.status === 429 || (data?.error?.type === 'TOO_MANY_REQUESTS') || 
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      if (!res.ok) {
+        throw new Error(`Erro HTTP ${res.status}: ${res.statusText}`);
+      }
+      data = {};
+    }
+
+    if (res.status === 429 || (data?.error?.type === 'TOO_MANY_REQUESTS') ||
         (data?.error?.description || '').includes('limite')) {
       // Rate limit: espera antes de tentar novamente
       const wait = (attempt + 1) * 1500;
