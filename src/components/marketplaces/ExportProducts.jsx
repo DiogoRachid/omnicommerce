@@ -570,7 +570,7 @@ export default function ExportProducts({ companies, selectedCompany }) {
                 <TableHead className="w-28"></TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className="[&_td]:py-0.5">
               {filtered.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center text-muted-foreground py-8">

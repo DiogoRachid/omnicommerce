@@ -72,7 +72,7 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
   const catLabel = getCategoriaLabel(p.categoria);
 
   const Td = ({ children, right, mono, muted, small, className = '' }) => (
-    <td className={`border border-border px-2 py-1.5 text-xs ${right ? 'text-right' : ''} ${mono ? 'font-mono' : ''} ${muted ? 'text-muted-foreground' : ''} ${small ? 'text-[11px]' : ''} ${className}`}>
+    <td className={`border border-border px-2 py-0.5 text-xs ${right ? 'text-right' : ''} ${mono ? 'font-mono' : ''} ${muted ? 'text-muted-foreground' : ''} ${small ? 'text-[11px]' : ''} ${className}`}>
       {children}
     </td>
   );
@@ -88,7 +88,7 @@ function ProductRow({ p, visibleCols, selected, onSelect, onOpen, onToggle, onDe
       </Td>
 
       {/* Expand / indent + nome (sempre visível) */}
-      <td className="border border-border px-2 py-1.5 text-xs">
+      <td className="border border-border px-2 py-0.5 text-xs">
         <div className="flex items-center gap-1.5" style={{ paddingLeft: `${indent * 16}px` }}>
           {extraLeft}
           {isVariacao && indent > 0 && <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />}
@@ -474,7 +474,7 @@ export default function Products() {
   const Th = ({ children, right, colKey }) => (
     <th
       style={{ width: colWidths[colKey], minWidth: 40, position: 'relative' }}
-      className={`border border-border bg-muted px-2 py-1.5 text-xs font-semibold text-muted-foreground whitespace-nowrap select-none ${right ? 'text-right' : 'text-left'}`}
+      className={`border border-border bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground whitespace-nowrap select-none ${right ? 'text-right' : 'text-left'}`}
     >
       {children}
       <span
@@ -547,7 +547,7 @@ export default function Products() {
               <table className="border-collapse text-xs" style={{ tableLayout: 'fixed', minWidth: '100%' }}>
                 <thead>
                   <tr>
-                    <th style={{ width: 36, minWidth: 36 }} className="border border-border bg-muted px-2 py-1.5">
+                    <th style={{ width: 36, minWidth: 36 }} className="border border-border bg-muted px-2 py-0.5">
                       <Checkbox
                         checked={paginatedFiltered.length > 0 && selectedCount === paginatedFiltered.length}
                         onCheckedChange={v => {

@@ -196,17 +196,17 @@ function BlingImport({ localProducts }) {
               <TableBody>
                 {filtered.map(p => (
                   <TableRow key={p.id} className="cursor-pointer" onClick={() => setSelected(s => ({ ...s, [p.id]: !s[p.id] }))}>
-                    <TableCell onClick={e => e.stopPropagation()}>
+                    <TableCell className="py-0.5" onClick={e => e.stopPropagation()}>
                       <Checkbox checked={!!selected[p.id]} onCheckedChange={v => setSelected(s => ({ ...s, [p.id]: v }))} />
                     </TableCell>
-                    <TableCell className="text-sm font-medium max-w-[200px] truncate">{p.nome}</TableCell>
-                    <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
-                    <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{p.preco ? `R$ ${p.preco.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell>
+                    <TableCell className="py-0.5 text-sm font-medium max-w-[200px] truncate">{p.nome}</TableCell>
+                    <TableCell className="py-0.5 font-mono text-xs">{p.sku || '-'}</TableCell>
+                    <TableCell className="py-0.5 font-mono text-xs">{p.ean || '-'}</TableCell>
+                    <TableCell className="py-0.5 text-right text-sm">{p.preco ? `R$ ${p.preco.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="py-0.5">
                       <Badge variant={p.status === 'ativo' ? 'default' : 'secondary'} className="text-[10px]">{p.status}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-0.5">
                       {p._local
                         ? <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-yellow-100 text-yellow-700">Já cadastrado</span>
                         : <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">Novo</span>}
@@ -407,10 +407,10 @@ function BlingExport({ selectedCompany }) {
           className={`cursor-pointer ${isExp ? 'bg-orange-50/60' : ''} hover:bg-accent/40`}
           onClick={() => togglePai(p, !selected[p.id])}
         >
-          <TableCell onClick={e => e.stopPropagation()}>
+          <TableCell className="py-0.5" onClick={e => e.stopPropagation()}>
             <Checkbox checked={!!selected[p.id]} onCheckedChange={v => togglePai(p, v)} />
           </TableCell>
-          <TableCell className="font-medium text-sm">
+          <TableCell className="py-0.5 font-medium text-sm">
             <div className="flex items-center gap-1.5">
               {isPai && (
                 <button className="p-0.5 rounded hover:bg-orange-200 transition-colors shrink-0"
@@ -422,11 +422,11 @@ function BlingExport({ selectedCompany }) {
               {isPai && <Badge variant="outline" className="text-[9px] px-1 shrink-0">Pai</Badge>}
             </div>
           </TableCell>
-          <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
-          <TableCell className="font-mono text-xs">{p.ean || '-'}</TableCell>
-          <TableCell className="text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
-          <TableCell className="text-right text-sm">{isPai ? <span className="text-muted-foreground">—</span> : (p.estoque_atual ?? 0)}</TableCell>
-          <TableCell>
+          <TableCell className="py-0.5 font-mono text-xs">{p.sku || '-'}</TableCell>
+          <TableCell className="py-0.5 font-mono text-xs">{p.ean || '-'}</TableCell>
+          <TableCell className="py-0.5 text-right text-sm">{p.preco_venda ? `R$ ${p.preco_venda.toFixed(2)}` : '-'}</TableCell>
+          <TableCell className="py-0.5 text-right text-sm">{isPai ? <span className="text-muted-foreground">—</span> : (p.estoque_atual ?? 0)}</TableCell>
+          <TableCell className="py-0.5">
             <Badge variant={p.ativo ? 'default' : 'secondary'} className="text-[10px]">{p.ativo ? 'Ativo' : 'Inativo'}</Badge>
           </TableCell>
         </TableRow>
@@ -444,18 +444,18 @@ function BlingExport({ selectedCompany }) {
                   <TableCell onClick={e => e.stopPropagation()}>
                     <Checkbox checked={vars.every(v => !!selected[v.id])} onCheckedChange={v => toggleCor(vars, v)} />
                   </TableCell>
-                  <TableCell className="py-1.5">
+                  <TableCell className="py-0.5">
                     <div className="flex items-center gap-2 pl-8 text-xs font-semibold text-orange-700">
                       {hasTamanho && (isExpCor ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}
                       <span>🎨 {cor}</span>
                       <span className="font-normal text-orange-500">({vars.length})</span>
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs py-1.5">{vars[0]?.sku || '-'}</TableCell>
-                  <TableCell className="font-mono text-xs py-1.5">{vars[0]?.ean || '-'}</TableCell>
-                  <TableCell className="text-right text-xs py-1.5">{vars[0]?.preco_venda ? `R$ ${vars[0].preco_venda.toFixed(2)}` : '-'}</TableCell>
-                  <TableCell className="text-right text-xs py-1.5 text-muted-foreground">{vars.reduce((s, v) => s + (v.estoque_atual || 0), 0)}</TableCell>
-                  <TableCell className="py-1.5" />
+                  <TableCell className="font-mono text-xs py-0.5">{vars[0]?.sku || '-'}</TableCell>
+                  <TableCell className="font-mono text-xs py-0.5">{vars[0]?.ean || '-'}</TableCell>
+                  <TableCell className="text-right text-xs py-0.5">{vars[0]?.preco_venda ? `R$ ${vars[0].preco_venda.toFixed(2)}` : '-'}</TableCell>
+                  <TableCell className="text-right text-xs py-0.5 text-muted-foreground">{vars.reduce((s, v) => s + (v.estoque_atual || 0), 0)}</TableCell>
+                  <TableCell className="py-0.5" />
                 </TableRow>
 
                 {hasTamanho && isExpCor && vars.map(v => {
@@ -466,17 +466,17 @@ function BlingExport({ selectedCompany }) {
                       <TableCell onClick={e => e.stopPropagation()}>
                         <Checkbox checked={!!selected[v.id]} onCheckedChange={val => setSelected(s => ({ ...s, [v.id]: val }))} />
                       </TableCell>
-                      <TableCell className="py-1.5">
+                      <TableCell className="py-0.5">
                         <div className="flex items-center gap-1.5 pl-16 text-xs text-muted-foreground">
                           <div className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" />
                           {tamanho || v.nome}
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-xs py-1.5">{v.sku || '-'}</TableCell>
-                      <TableCell className="font-mono text-xs py-1.5">{v.ean || '-'}</TableCell>
-                      <TableCell className="text-right text-xs py-1.5">{v.preco_venda ? `R$ ${v.preco_venda.toFixed(2)}` : '-'}</TableCell>
-                      <TableCell className="text-right text-xs py-1.5">{v.estoque_atual ?? 0}</TableCell>
-                      <TableCell className="py-1.5" />
+                      <TableCell className="font-mono text-xs py-0.5">{v.sku || '-'}</TableCell>
+                      <TableCell className="font-mono text-xs py-0.5">{v.ean || '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-0.5">{v.preco_venda ? `R$ ${v.preco_venda.toFixed(2)}` : '-'}</TableCell>
+                      <TableCell className="text-right text-xs py-0.5">{v.estoque_atual ?? 0}</TableCell>
+                      <TableCell className="py-0.5" />
                     </TableRow>
                   );
                 })}
