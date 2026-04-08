@@ -74,7 +74,9 @@ async function blingRequest(accessToken, path, options = {}, retries = 3) {
       continue;
     }
     if (!res.ok) {
-      throw new Error(data?.error?.description || data?.error?.message || JSON.stringify(data));
+      const errMsg = data?.error?.description || data?.error?.message || JSON.stringify(data);
+      console.error(`[blingRequest] Erro ${res.status} em ${path}:`, JSON.stringify(data));
+      throw new Error(errMsg);
     }
     return data;
   }
@@ -96,6 +98,8 @@ Deno.serve(async (req) => {
   // O SDK do Base44 pode encapsular o payload em diferentes formatos
   const action = body.action || body?.payload?.action;
   const payload = body.payload || body?.payload?.payload || {};
+
+  try {
 
   if (action === 'status') {
     const tokens = await base44.asServiceRole.entities.BlingToken.list();
@@ -339,5 +343,13 @@ Deno.serve(async (req) => {
     return Response.json({ saldo });
   }
 
-  return Response.json({ error: 'Ação desconhecida' }, { status: 400 });
+    return Response.json({ error: 'Ação desconhecida' }, { status: 400 });
+
+  } catch (error) {
+    console.error('[blingProxy] Erro capturado:', error.message, error.stack);
+    return Response.json({
+      error: true,
+      message: error.message || 'Erro de comunicação com a API Bling',
+    }, { status: 400 });
+  }
 });
