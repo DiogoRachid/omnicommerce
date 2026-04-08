@@ -353,6 +353,52 @@ Deno.serve(async (req) => {
     return Response.json({ saldo });
   }
 
+  if (action === 'createProductWithVariacoes') {
+    const accessToken = await getValidAccessToken(base44);
+    const { pai, variacoes } = payload;
+
+    const variacoesBling = variacoes.map(v => {
+      let stringVariacao = "";
+      if (v.atributos_extras) {
+        stringVariacao = Object.entries(v.atributos_extras)
+          .map(([chave, valor]) => `${chave}:${valor}`)
+          .join(';');
+      }
+      return {
+        nome: v.nome,
+        codigo: v.sku,
+        preco: v.preco_venda || 0,
+        situacao: v.ativo ? "A" : "I",
+        imagemURL: v.fotos && v.fotos.length > 0 ? v.fotos[0] : "",
+        variacao: {
+          nome: stringVariacao
+        }
+      };
+    });
+
+    const produtoBling = {
+      nome: pai.nome,
+      codigo: pai.sku,
+      tipo: "P",
+      formato: "V",
+      situacao: pai.ativo ? "A" : "I",
+      descricaoCurta: pai.descricao || "",
+      marca: pai.marca || "",
+      imagemURL: pai.fotos && pai.fotos.length > 0 ? pai.fotos[0] : "",
+      variacoes: variacoesBling
+    };
+
+    try {
+      const data = await blingRequest(accessToken, '/produtos', {
+        method: 'POST',
+        body: JSON.stringify(produtoBling),
+      });
+      return Response.json(data);
+    } catch (error) {
+      return Response.json({ error: error.message || 'Erro ao exportar produto' }, { status: 400 });
+    }
+  }
+
     return Response.json({ error: 'Ação desconhecida' }, { status: 400 });
 
   } catch (error) {
