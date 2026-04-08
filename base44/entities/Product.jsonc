@@ -4,7 +4,7 @@
   "properties": {
     "sku": {
       "type": "string",
-      "description": "SKU \u00fanico do produto"
+      "description": "SKU \u00fanico do produto (por company_id)"
     },
     "ean": {
       "type": "string",
@@ -23,7 +23,7 @@
     },
     "categoria": {
       "type": "string",
-      "description": "Categoria do produto (slug da categoria, ex: calcados, eletronicos, calcados_infantis)"
+      "description": "Categoria do produto (slug da categoria)"
     },
     "ncm": {
       "type": "string",
@@ -129,10 +129,16 @@
       "type": "string"
     },
     "company_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID da empresa \u2014 isola os dados de cada cliente/lojista"
     },
     "bling_id": {
-      "type": "string"
+      "type": "string",
+      "description": "ID do produto no Bling (retornado ap\u00f3s primeira exporta\u00e7\u00e3o). Bloqueia edi\u00e7\u00e3o do SKU."
+    },
+    "ml_id": {
+      "type": "string",
+      "description": "ID do an\u00fancio no Mercado Livre (retornado ap\u00f3s primeira exporta\u00e7\u00e3o). Bloqueia edi\u00e7\u00e3o do SKU."
     },
     "marketplace_fields": {
       "type": "object",

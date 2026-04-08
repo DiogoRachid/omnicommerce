@@ -192,13 +192,32 @@ export default function ProductForm() {
             <Input value={form.nome} onChange={(e) => updateField('nome', e.target.value)} />
           </div>
           <div>
-            <Label>SKU *</Label>
+            <Label className="flex items-center gap-2">
+              SKU *
+              {(form.bling_id || form.ml_id) && (
+                <span className="text-[10px] font-normal text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                  🔒 Bloqueado — produto já exportado
+                </span>
+              )}
+            </Label>
             <div className="flex gap-2">
-              <Input value={form.sku} onChange={(e) => updateField('sku', e.target.value)} />
-              {!isEditing && (
+              <Input
+                value={form.sku}
+                onChange={(e) => updateField('sku', e.target.value)}
+                readOnly={!!(form.bling_id || form.ml_id)}
+                disabled={!!(form.bling_id || form.ml_id)}
+                className={(form.bling_id || form.ml_id) ? 'bg-muted text-muted-foreground cursor-not-allowed' : ''}
+              />
+              {!isEditing && !(form.bling_id || form.ml_id) && (
                 <Button variant="outline" size="sm" onClick={generateSKU} type="button">Gerar</Button>
               )}
             </div>
+            {(form.bling_id || form.ml_id) && (
+              <div className="flex gap-3 mt-1">
+                {form.bling_id && <span className="text-[10px] text-muted-foreground">Bling: <code className="font-mono">{form.bling_id}</code></span>}
+                {form.ml_id && <span className="text-[10px] text-muted-foreground">ML: <code className="font-mono">{form.ml_id}</code></span>}
+              </div>
+            )}
           </div>
           <div>
             <Label>EAN/GTIN</Label>

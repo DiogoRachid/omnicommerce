@@ -295,6 +295,31 @@ export default function ExportProducts({ companies, selectedCompany }) {
     setMlPublishing(true);
     setMlPublishMsg(null);
     try {
+      let blingId = mlPublishProduct.bling_id || null;
+      let mlId = null;
+
+      // ── Passo A: Exportar para o Bling (se ainda não exportado) ──────────
+      if (!blingId) {
+        try {
+          const blingRes = await base44.functions.invoke('blingProxy', {
+            action: 'createProduct',
+            produto: {
+              nome: mlPublishProduct.nome,
+              tipo: 'P',
+              formato: 'S',
+              situacao: 'A',
+              codigo: mlPublishProduct.sku || '',
+              preco: mlPublishProduct.preco_venda || 0,
+            },
+          });
+          blingId = blingRes.data?.data?.id ? String(blingRes.data.data.id) : null;
+        } catch (blingErr) {
+          // Bling falhou mas não interrompe o fluxo do ML
+          console.warn('Bling export failed:', blingErr.message);
+        }
+      }
+
+      // ── Passo B: Publicar no Mercado Livre ────────────────────────────────
       const res = await base44.functions.invoke('mlProxy', {
         action: 'createListing',
         product_id: mlPublishProduct.id,
@@ -311,17 +336,34 @@ export default function ExportProducts({ companies, selectedCompany }) {
         },
       });
 
-      if (res.data?.id) {
-        setMlPublishMsg({ type: 'success', text: `Anúncio publicado! ID: ${res.data.id}` });
-        await logAction('exportacao', 'sucesso', mlPublishProduct, `Publicado no ML. ID: ${res.data.id}`, { ml_id: res.data.id });
-        queryClient.invalidateQueries({ queryKey: ['listings'] });
-        queryClient.invalidateQueries({ queryKey: ['listings', selectedCompany] });
-      } else {
-        throw new Error(res.data?.error || 'Resposta inesperada da API');
+      if (!res.data?.id) {
+        throw new Error(res.data?.error || 'Resposta inesperada da API do ML');
       }
+
+      mlId = String(res.data.id);
+
+      // ── Passo C: Gravar bling_id e ml_id no produto (Fonte da Verdade) ───
+      const updatePayload = {};
+      if (blingId) updatePayload.bling_id = blingId;
+      if (mlId) updatePayload.ml_id = mlId;
+      if (Object.keys(updatePayload).length > 0) {
+        await base44.entities.Product.update(mlPublishProduct.id, updatePayload);
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['products', selectedCompany] });
+      }
+
+      // ── Passo D: Notificação de sucesso ───────────────────────────────────
+      toast.success('Produto exportado e vinculado com sucesso aos canais!');
+      setMlPublishMsg({
+        type: 'success',
+        text: `Anúncio publicado! ML ID: ${mlId}${blingId ? ` · Bling ID: ${blingId}` : ''}`,
+      });
+      await logAction('exportacao', 'sucesso', mlPublishProduct, `Publicado no ML. ID: ${mlId}${blingId ? ` | Bling: ${blingId}` : ''}`, { ml_id: mlId, bling_id: blingId });
+      queryClient.invalidateQueries({ queryKey: ['listings'] });
+      queryClient.invalidateQueries({ queryKey: ['listings', selectedCompany] });
+
     } catch (e) {
       setMlPublishMsg({ type: 'error', text: 'Erro ao publicar: ' + e.message });
-      // Atualiza listing para status erro se já existir
       const listing = getListing(mlPublishProduct.id);
       if (listing) {
         await base44.entities.MarketplaceListing.update(listing.id, { status: 'erro', erro: e.message });
