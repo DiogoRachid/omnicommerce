@@ -222,8 +222,8 @@ Deno.serve(async (req) => {
 
     // 2. Para produtos com variações, buscar detalhe individual (necessário para obter lista de variações)
     //    Para produtos simples, usar dados da listagem diretamente
-    const produtosComVariacao = allProducts.filter(p => p.tipo === 'V' || p.variacoes?.length > 0);
-    const produtosSimplesBrutos = allProducts.filter(p => p.tipo !== 'V' && !(p.variacoes?.length > 0));
+    const produtosComVariacao = allProducts.filter(p => p.formato === 'V' || p.variacoes?.length > 0);
+    const produtosSimplesBrutos = allProducts.filter(p => p.formato !== 'V' && !(p.variacoes?.length > 0));
 
     // Busca detalhes apenas dos produtos pai (com variações) - lotes de 3
     const BATCH = 3;
