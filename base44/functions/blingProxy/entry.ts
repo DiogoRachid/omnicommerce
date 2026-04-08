@@ -10,8 +10,8 @@ async function getToken(base44) {
 }
 
 async function doRefreshToken(base44, tokenRecord) {
-  const clientId = Deno.env.get('VITE_BLING_CLIENT_ID');
-  const clientSecret = Deno.env.get('VITE_BLING_CLIENT_SECRET');
+  const clientId = Deno.env.get('BLING_CLIENT_ID');
+  const clientSecret = Deno.env.get('BLING_CLIENT_SECRET');
   const credentials = btoa(`${clientId}:${clientSecret}`);
 
   const res = await fetch(BLING_TOKEN_URL, {
@@ -125,8 +125,8 @@ Deno.serve(async (req) => {
 
   if (action === 'exchange') {
     const { code, redirect_uri } = payload;
-    const clientId = Deno.env.get('VITE_BLING_CLIENT_ID');
-    const clientSecret = Deno.env.get('VITE_BLING_CLIENT_SECRET');
+    const clientId = Deno.env.get('BLING_CLIENT_ID');
+    const clientSecret = Deno.env.get('BLING_CLIENT_SECRET');
     const credentials = btoa(`${clientId}:${clientSecret}`);
 
     const res = await fetch(BLING_TOKEN_URL, {
