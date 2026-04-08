@@ -354,10 +354,10 @@ Deno.serve(async (req) => {
 
   if (action === 'createProductWithVariacoes') {
     const accessToken = await getValidAccessToken(base44);
-
     const pai = body.pai;
     const variacoes = body.variacoes || [];
 
+    // 1. Traduzir as variações do Base44 para o Bling
     const variacoesBling = variacoes.map(v => {
       let stringVariacao = "";
       if (v.atributos_extras) {
@@ -365,9 +365,12 @@ Deno.serve(async (req) => {
           .map(([chave, valor]) => `${chave}:${valor}`)
           .join(';');
       }
+
       return {
         nome: v.nome,
         codigo: v.sku,
+        tipo: "P",      // CORREÇÃO: O filho também é um Produto (P)
+        formato: "S",   // CORREÇÃO: O filho tem formato Simples (S)
         preco: v.preco_venda || 0,
         situacao: v.ativo ? "A" : "I",
         imagemURL: v.fotos && v.fotos.length > 0 ? v.fotos[0] : "",
@@ -377,11 +380,12 @@ Deno.serve(async (req) => {
       };
     });
 
+    // 2. Montar o Produto Pai (Agrupador)
     const produtoBling = {
       nome: pai.nome,
       codigo: pai.sku,
-      tipo: "P",
-      formato: "V",
+      tipo: "P",      // Obrigatório: P = Produto
+      formato: "V",   // Obrigatório: V = Com Variações
       situacao: pai.ativo ? "A" : "I",
       descricaoCurta: pai.descricao || "",
       marca: pai.marca || "",
@@ -389,6 +393,7 @@ Deno.serve(async (req) => {
       variacoes: variacoesBling
     };
 
+    // 3. Disparar para a API do Bling
     try {
       const data = await blingRequest(accessToken, '/produtos', {
         method: 'POST',
