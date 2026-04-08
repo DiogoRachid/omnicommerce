@@ -11,9 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Save, Plus, X, Layers, Store } from 'lucide-react';
 import ProductPhotos from '@/components/products/ProductPhotos';
-
 import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 import MarketplaceCategoryFieldsModal from '@/components/products/MarketplaceCategoryFieldsModal';
+import MLCategoryFields from '@/components/products/MLCategoryFields';
 
 const emptyProduct = {
   sku: '', ean: '', nome: '', descricao: '', marca: '',
@@ -53,6 +53,11 @@ export default function ProductForm() {
     queryKey: ['productCategories'],
     queryFn: () => base44.entities.ProductCategory.list('nome', 200),
   });
+
+  // Categoria selecionada com campos ML
+  const categoriaObj = categorias.find(c => c.nome === form.categoria);
+  const mlFields = categoriaObj?.campos_marketplace?.mercado_livre || [];
+  const hasMLFields = mlFields.filter(f => f.obrigatorio).length > 0;
 
   const { data: variacoes = [] } = useQuery({
     queryKey: ['variacoes', productId],
@@ -231,6 +236,15 @@ export default function ProductForm() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Ficha Técnica ML — campos obrigatórios da categoria */}
+      {categoriaObj && (
+        <MLCategoryFields
+          category={categoriaObj}
+          values={form.marketplace_fields?.mercado_livre || {}}
+          onChange={vals => updateField('marketplace_fields', { ...form.marketplace_fields, mercado_livre: vals })}
+        />
+      )}
 
       {/* Atributos Extras */}
       <Card>

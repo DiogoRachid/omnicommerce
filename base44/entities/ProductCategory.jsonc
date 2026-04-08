@@ -18,6 +18,10 @@
       "type": "string",
       "description": "ID da categoria pai (para subcategorias)"
     },
+    "ml_category_id": {
+      "type": "string",
+      "description": "ID da categoria no Mercado Livre (ex: MLB1234), obtido via API de predi\u00e7\u00e3o"
+    },
     "variacoes_padrao": {
       "type": "array",
       "description": "Varia\u00e7\u00f5es padr\u00e3o da categoria",
@@ -50,12 +54,41 @@
     },
     "campos_marketplace": {
       "type": "object",
-      "description": "Campos customizados por marketplace",
+      "description": "Campos obrigat\u00f3rios por marketplace (sincronizados automaticamente com ML via API)",
       "properties": {
         "mercado_livre": {
           "type": "array",
           "items": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "nome": {
+                "type": "string"
+              },
+              "tipo": {
+                "type": "string",
+                "enum": [
+                  "texto",
+                  "number",
+                  "lista",
+                  "boolean"
+                ]
+              },
+              "obrigatorio": {
+                "type": "boolean"
+              },
+              "opcoes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "hint": {
+                "type": "string"
+              }
+            }
           }
         },
         "shopee": {

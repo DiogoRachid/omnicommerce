@@ -11,10 +11,20 @@ import { toast } from 'sonner';
 import GeneralTab from './tabs/GeneralTab';
 import VariacoesTab from './tabs/VariacoesTab';
 import MarketplaceFieldsTab from './tabs/MarketplaceFieldsTab';
+import MLSyncButton from './MLSyncButton';
 
 export default function CategoryModal({ category, isNew, categories, onClose, onSaved }) {
   const [form, setForm] = useState(category);
   const [saving, setSaving] = useState(false);
+
+  const handleSynced = async () => {
+    // Recarrega o form com os dados atualizados após sincronização
+    try {
+      const base44 = (await import('@/api/base44Client')).base44;
+      const updated = await base44.entities.ProductCategory.filter({ id: form.id });
+      if (updated?.[0]) setForm(prev => ({ ...prev, ...updated[0] }));
+    } catch {}
+  };
 
   const updateForm = (key, value) => setForm(prev => ({ ...prev, [key]: value }));
 
@@ -42,10 +52,15 @@ export default function CategoryModal({ category, isNew, categories, onClose, on
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b shrink-0">
-          <DialogTitle className="flex items-center gap-2">
-            <span className="text-xl">{form.icone || '📦'}</span>
-            {isNew ? 'Nova Categoria' : `Editar — ${form.nome}`}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-xl">{form.icone || '📦'}</span>
+              {isNew ? 'Nova Categoria' : `Editar — ${form.nome}`}
+            </DialogTitle>
+            {!isNew && (
+              <MLSyncButton category={form} onSynced={handleSynced} />
+            )}
+          </div>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto min-h-0">

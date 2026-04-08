@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Copy, Tag } from 'lucide-react';
+import { Plus, Edit, Trash2, Copy, Tag, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 import CategoryModal from '@/components/categories/CategoryModal';
 
@@ -134,6 +134,11 @@ export default function Categories() {
                         {mp.label}
                       </span>
                     ))
+                  )}
+                  {cat.ml_category_id && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-yellow-300 bg-yellow-50 text-yellow-800 flex items-center gap-1">
+                      <ShoppingCart className="w-2.5 h-2.5" /> {cat.ml_category_id}
+                    </span>
                   )}
                 </div>
 
