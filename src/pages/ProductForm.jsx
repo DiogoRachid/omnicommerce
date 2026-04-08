@@ -14,6 +14,7 @@ import ProductPhotos from '@/components/products/ProductPhotos';
 import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 import MarketplaceCategoryFieldsModal from '@/components/products/MarketplaceCategoryFieldsModal';
 import MLCategoryFields from '@/components/products/MLCategoryFields';
+import InlineVariationsEditor, { generateVariationsFromGroups } from '@/components/products/InlineVariationsEditor';
 
 const emptyProduct = {
   sku: '', ean: '', nome: '', descricao: '', marca: '',
@@ -42,6 +43,7 @@ export default function ProductForm() {
   const [newAttrVal, setNewAttrVal] = useState('');
   const [showVariationsModal, setShowVariationsModal] = useState(false);
   const [showMarketplaceFields, setShowMarketplaceFields] = useState(false);
+  const [variationGroups, setVariationGroups] = useState([{ nome: 'Cor', values: [''] }]);
 
   const { data: product } = useQuery({
     queryKey: ['product', productId],
@@ -92,9 +94,20 @@ export default function ProductForm() {
   }, [variacoes]);
 
   const saveMutation = useMutation({
-    mutationFn: (data) => {
+    mutationFn: async (data) => {
       if (isEditing) return base44.entities.Product.update(productId, data);
-      return base44.entities.Product.create(data);
+      // Criação: salva o produto pai/simples e depois cria as variações
+      const pai = await base44.entities.Product.create(data);
+      if (data.tipo === 'pai' && variationGroups.some(g => g.nome.trim())) {
+        const variations = generateVariationsFromGroups(
+          { ...data, id: pai.id, sku: data.sku },
+          variationGroups
+        );
+        for (const v of variations) {
+          await base44.entities.Product.create({ ...v, produto_pai_id: pai.id });
+        }
+      }
+      return pai;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
@@ -255,6 +268,24 @@ export default function ProductForm() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Variações — no novo produto: editor completo; na edição: só seletor de tipo */}
+      {!isEditing ? (
+        <InlineVariationsEditor
+          tipo={form.tipo || 'simples'}
+          onTipoChange={(t) => updateField('tipo', t)}
+          variationGroups={variationGroups}
+          onVariationGroupsChange={setVariationGroups}
+        />
+      ) : form.tipo !== 'variacao' && (
+        <InlineVariationsEditor
+          tipo={form.tipo || 'simples'}
+          onTipoChange={(t) => updateField('tipo', t)}
+          variationGroups={[]}
+          onVariationGroupsChange={() => {}}
+          readOnly
+        />
+      )}
 
       {/* Ficha Técnica ML — campos obrigatórios da categoria */}
       {categoriaObj && (
