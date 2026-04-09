@@ -18,15 +18,17 @@ export default function AppLayout() {
         <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Sidebar - hidden on mobile unless open */}
-      <div className={cn("hidden lg:block")}>
+      {/* Sidebar desktop */}
+      <div className="hidden lg:block">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       </div>
-      <div className={cn("lg:hidden fixed z-40 transition-transform", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
+
+      {/* Sidebar mobile */}
+      <div className={cn("lg:hidden fixed z-40 transition-transform duration-300", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
         <Sidebar collapsed={false} onToggle={() => setMobileOpen(false)} />
       </div>
 
-      <div className={cn("transition-all duration-300", "lg:ml-[240px]", collapsed && "lg:ml-[68px]")}>
+      <div className={cn("transition-all duration-300 lg:ml-[240px]", collapsed && "lg:ml-[68px]")}>
         <Header selectedCompany={selectedCompany} onCompanyChange={setSelectedCompany}>
           <Button variant="ghost" size="icon" className="lg:hidden mr-2" onClick={() => setMobileOpen(true)}>
             <Menu className="w-5 h-5" />
