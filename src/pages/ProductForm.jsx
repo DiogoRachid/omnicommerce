@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Save, Plus, X, Layers, Store } from 'lucide-react';
 import ProductPhotos from '@/components/products/ProductPhotos';
-import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal.jsx';
+import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 import MarketplaceCategoryFieldsModal from '@/components/products/MarketplaceCategoryFieldsModal';
 import MLCategoryFields from '@/components/products/MLCategoryFields';
 import InlineVariationsEditor, { generateVariationsFromGroups } from '@/components/products/InlineVariationsEditor';
