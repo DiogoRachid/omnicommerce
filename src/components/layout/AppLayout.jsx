@@ -7,7 +7,7 @@ import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function AppLayout() {
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState('all');
 
