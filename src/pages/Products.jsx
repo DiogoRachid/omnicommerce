@@ -17,7 +17,7 @@ import ProductDetailModal from '@/components/products/ProductDetailModal';
 import ColumnConfigPanel, { DEFAULT_COLUMNS } from '@/components/products/ColumnConfigPanel';
 import ViewModeSelector from '@/components/products/ViewModeSelector';
 import ProductManagerChat from '@/components/products/ProductManagerChat';
-import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal.jsx';
+import BulkEditVariationsModal from '@/components/products/BulkEditVariationsModal';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
