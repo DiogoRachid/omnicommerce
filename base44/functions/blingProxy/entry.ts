@@ -353,76 +353,55 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'createProductWithVariacoes') {
-    try {
-      const accessToken = await getValidAccessToken(base44);
-      
-      const pai = body.pai;
-      const variacoes = body.variacoes || [];
-      if (!pai) throw new Error("O formato dos dados enviados pela tela está incorreto (faltando o Produto Pai).");
+    const accessToken = await getValidAccessToken(base44);
+    const pai = body.pai;
+    const variacoes = body.variacoes || [];
 
-      // 1. Traduzir as variações do Base44 para o Bling
-      const variacoesBling = variacoes.map(v => {
-        let stringVariacao = "";
-        if (v.atributos_extras) {
-          stringVariacao = Object.entries(v.atributos_extras)
-            .map(([chave, valor]) => `${chave}:${valor}`)
-            .join(';');
+    // 1. Traduzir as variações do Base44 para o Bling
+    const variacoesBling = variacoes.map(v => {
+      let stringVariacao = "";
+      if (v.atributos_extras) {
+        stringVariacao = Object.entries(v.atributos_extras)
+          .map(([chave, valor]) => `${chave}:${valor}`)
+          .join(';');
+      }
+
+      return {
+        nome: v.nome,
+        codigo: v.sku,
+        tipo: "P",      // CORREÇÃO: O filho também é um Produto (P)
+        formato: "S",   // CORREÇÃO: O filho tem formato Simples (S)
+        preco: v.preco_venda || 0,
+        situacao: v.ativo ? "A" : "I",
+        imagemURL: v.fotos && v.fotos.length > 0 ? v.fotos[0] : "",
+        variacao: {
+          nome: stringVariacao
         }
-
-        return {
-          nome: v.nome,
-          codigo: v.sku,
-          tipo: "P",      // Recuperado: Essencial para a API v3
-          formato: "S",   // Recuperado: Essencial para a API v3
-          preco: v.preco_venda || 0,
-          situacao: v.ativo ? "A" : "I",
-          imagemURL: v.fotos && v.fotos.length > 0 ? v.fotos[0] : "",
-          variacao: {
-            nome: stringVariacao
-          }
-        };
-      });
-
-      // 2. Montar o Produto Pai
-      const produtoBling = {
-        nome: pai.nome,
-        codigo: pai.sku,
-        tipo: "P",
-        formato: "V",
-        situacao: pai.ativo ? "A" : "I",
-        descricaoCurta: pai.descricao || "",
-        marca: pai.marca || "",
-        imagemURL: pai.fotos && pai.fotos.length > 0 ? pai.fotos[0] : "",
-        variacoes: variacoesBling
       };
+    });
 
-      // 3. Disparar para o Bling
+    // 2. Montar o Produto Pai (Agrupador)
+    const produtoBling = {
+      nome: pai.nome,
+      codigo: pai.sku,
+      tipo: "P",      // Obrigatório: P = Produto
+      formato: "V",   // Obrigatório: V = Com Variações
+      situacao: pai.ativo ? "A" : "I",
+      descricaoCurta: pai.descricao || "",
+      marca: pai.marca || "",
+      imagemURL: pai.fotos && pai.fotos.length > 0 ? pai.fotos[0] : "",
+      variacoes: variacoesBling
+    };
+
+    // 3. Disparar para a API do Bling
+    try {
       const data = await blingRequest(accessToken, '/produtos', {
         method: 'POST',
         body: JSON.stringify(produtoBling),
       });
-
-      // 4. Retornar SUCESSO com o ID para salvar no banco
-      return Response.json({ 
-        success: true, 
-        message: "Produto exportado com sucesso!",
-        bling_id: data?.data?.id 
-      }, { status: 200 });
-
+      return Response.json(data);
     } catch (error) {
-      let msgErro = "Erro desconhecido";
-      if (error instanceof Error) {
-        msgErro = error.message;
-      } else if (typeof error === 'object' && error !== null) {
-        try {
-          msgErro = JSON.stringify(error);
-        } catch (e) {
-          msgErro = String(error);
-        }
-      } else {
-        msgErro = String(error);
-      }
-      return Response.json({ error: true, message: msgErro }, { status: 400 });
+      return Response.json({ error: true, message: error.message || 'Erro ao exportar produto' }, { status: 400 });
     }
   }
 
