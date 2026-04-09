@@ -26,18 +26,17 @@ const menuItems = [
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
 ];
 
-export default function Sidebar({ collapsed: collapsedProp, onToggle }) {
+export default function Sidebar({ collapsed: collapsedProp, onToggle, onMobileClose }) {
   const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Usa estado interno se não houver controle externo
   const collapsed = onToggle ? collapsedProp : isCollapsed;
   const handleToggle = onToggle ?? (() => setIsCollapsed(v => !v));
 
   return (
     <aside
       className={cn(
-        "fixed left-0 top-0 h-screen bg-sidebar text-sidebar-foreground z-40 transition-all duration-300 flex flex-col",
+        "h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 flex flex-col",
         collapsed ? "w-[68px]" : "w-[240px]"
       )}
     >
@@ -61,6 +60,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle }) {
             <Link
               key={item.path}
               to={item.path}
+              onClick={onMobileClose}
               className={cn(
                 "flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200",
                 collapsed ? "px-0 py-2.5 justify-center" : "px-3 py-2.5",
