@@ -26,8 +26,13 @@ const menuItems = [
   { icon: Settings, label: 'Configurações', path: '/configuracoes' },
 ];
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({ collapsed: collapsedProp, onToggle }) {
   const location = useLocation();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  // Usa estado interno se não houver controle externo
+  const collapsed = onToggle ? collapsedProp : isCollapsed;
+  const handleToggle = onToggle ?? (() => setIsCollapsed(v => !v));
 
   return (
     <aside
@@ -57,7 +62,8 @@ export default function Sidebar({ collapsed, onToggle }) {
               key={item.path}
               to={item.path}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                "flex items-center gap-3 rounded-lg text-sm font-medium transition-all duration-200",
+                collapsed ? "px-0 py-2.5 justify-center" : "px-3 py-2.5",
                 isActive
                   ? "bg-sidebar-primary text-white shadow-lg shadow-sidebar-primary/20"
                   : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -71,7 +77,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       </nav>
 
       <button
-        onClick={onToggle}
+        onClick={handleToggle}
         className="flex items-center justify-center h-12 border-t border-sidebar-border text-sidebar-foreground/50 hover:text-sidebar-foreground transition-colors"
       >
         {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
