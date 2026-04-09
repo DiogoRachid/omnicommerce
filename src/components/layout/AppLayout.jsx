@@ -12,7 +12,7 @@ export default function AppLayout() {
   const [selectedCompany, setSelectedCompany] = useState('all');
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       {/* Backdrop mobile */}
       {isMobileMenuOpen && (
         <div
@@ -21,8 +21,8 @@ export default function AppLayout() {
         />
       )}
 
-      {/* Sidebar desktop — fixa, colapsável */}
-      <div className="hidden md:block">
+      {/* Sidebar desktop — inline no flex */}
+      <div className="hidden md:flex shrink-0">
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       </div>
 
@@ -34,23 +34,14 @@ export default function AppLayout() {
         <Sidebar collapsed={false} onToggle={() => setIsMobileMenuOpen(false)} onMobileClose={() => setIsMobileMenuOpen(false)} />
       </div>
 
-      {/* Conteúdo principal */}
-      <div className={cn("transition-all duration-300 md:ml-[240px]", collapsed && "md:ml-[68px]")}>
-        {/* Topbar mobile */}
-        <div className="md:hidden flex items-center justify-between h-14 px-4 bg-sidebar border-b border-sidebar-border sticky top-0 z-30">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-sidebar-primary flex items-center justify-center">
-              <Package className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-sm font-bold text-white">GestãoPro</span>
-          </div>
-          <Button variant="ghost" size="icon" className="text-white hover:bg-sidebar-accent" onClick={() => setIsMobileMenuOpen(true)}>
+      {/* Área central */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        <Header selectedCompany={selectedCompany} onCompanyChange={setSelectedCompany}>
+          <Button variant="ghost" size="icon" className="md:hidden mr-2" onClick={() => setIsMobileMenuOpen(true)}>
             <Menu className="w-5 h-5" />
           </Button>
-        </div>
-
-        <Header selectedCompany={selectedCompany} onCompanyChange={setSelectedCompany} />
-        <main className="p-4 md:p-6">
+        </Header>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <Outlet context={{ selectedCompany, setSelectedCompany }} />
         </main>
       </div>

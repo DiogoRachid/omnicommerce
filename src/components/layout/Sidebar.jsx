@@ -36,7 +36,7 @@ export default function Sidebar({ collapsed: collapsedProp, onToggle, onMobileCl
   return (
     <aside
       className={cn(
-        "h-screen bg-sidebar text-sidebar-foreground transition-all duration-300 flex flex-col",
+        "h-full bg-sidebar text-sidebar-foreground transition-all duration-300 flex flex-col shrink-0",
         collapsed ? "w-[68px]" : "w-[240px]"
       )}
     >
