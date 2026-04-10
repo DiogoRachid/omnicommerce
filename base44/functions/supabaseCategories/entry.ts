@@ -54,9 +54,39 @@ Deno.serve(async (req) => {
 
   if (action === 'getAtributos') {
     const { categoria_id } = payload;
-    const data = await supabaseFetch(
+
+    // Fetch direct attributes
+    const direct = await supabaseFetch(
       `atributos?select=id,nome_atributo,obrigatorio,valores_possiveis,categoria_id&categoria_id=eq.${categoria_id}&limit=5000`
     );
+
+    // Also fetch attributes from child categories (nivel 2/3) to get tamanho, cor, etc.
+    const children = await supabaseFetch(
+      `categorias?select=id&categoria_pai_id=eq.${categoria_id}&limit=500`
+    ).catch(() => []);
+
+    let childAttrs = [];
+    if (children.length > 0) {
+      const childIds = children.map(c => c.id);
+      // Fetch in batches to avoid URL length limits
+      for (const childId of childIds.slice(0, 20)) {
+        const attrs = await supabaseFetch(
+          `atributos?select=id,nome_atributo,obrigatorio,valores_possiveis,categoria_id&categoria_id=eq.${childId}&limit=500`
+        ).catch(() => []);
+        childAttrs = childAttrs.concat(attrs);
+      }
+    }
+
+    // Merge and deduplicate by nome_atributo
+    const allAttrs = [...direct, ...childAttrs];
+    const seen = new Set();
+    const data = allAttrs.filter(a => {
+      const key = a.nome_atributo?.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     return Response.json({ data });
   }
 
@@ -83,7 +113,7 @@ Deno.serve(async (req) => {
 
       catRecord = await base44.asServiceRole.entities.ProductCategory.create({
         nome: categoria.nome,
-        descricao: `Nível ${categoria.nivel || 1}`,
+        descricao: `Categoria importada do banco global`,
         variacoes_padrao: variacoesPadrao,
         ativo: true,
       });
