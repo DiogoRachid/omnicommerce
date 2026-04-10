@@ -30,6 +30,7 @@ import FinancialDashboard from '@/pages/FinancialDashboard';
 import MarketplaceFields from '@/pages/MarketplaceFields';
 import Categories from '@/pages/Categories';
 import MarketplaceMapping from '@/pages/MarketplaceMapping';
+import ImportarCategorias from '@/pages/ImportarCategorias';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -75,7 +76,8 @@ const AuthenticatedApp = () => {
         <Route path="/financeiro" element={<FinancialDashboard />} />
         <Route path="/configuracoes/campos-marketplace" element={<MarketplaceFields />} />
         <Route path="/categorias" element={<Categories />} />
-        <Route path="/mapeamento-marketplaces" element={<MarketplaceMapping />} />    
+        <Route path="/mapeamento-marketplaces" element={<MarketplaceMapping />} />
+        <Route path="/importar-categorias" element={<ImportarCategorias />} />
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
       <Route path="/ml-callback" element={<MlCallback />} />
