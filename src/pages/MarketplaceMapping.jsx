@@ -21,7 +21,19 @@ const MARKETPLACES = [
   { id: 'shopee', label: 'Shopee', color: 'bg-orange-100 text-orange-800' },
   { id: 'shopify', label: 'Shopify', color: 'bg-green-100 text-green-800' },
   { id: 'woocommerce', label: 'WooCommerce', color: 'bg-purple-100 text-purple-800' },
+  { id: 'amazon', label: 'Amazon', color: 'bg-amber-100 text-amber-800' },
+  { id: 'magalu', label: 'Magalu', color: 'bg-blue-100 text-blue-700' },
 ];
+
+const STATIC_MARKETPLACE_FIELDS = {
+  mercado_livre: ['title', 'price', 'currency_id', 'available_quantity', 'listing_type_id', 'condition', 'category_id', 'gtin', 'seller_sku', 'pictures', 'description.plain_text', 'shipping.dimensions.height', 'shipping.dimensions.width', 'shipping.dimensions.length', 'shipping.dimensions.weight'],
+  bling: ['nome', 'codigo', 'preco', 'precoCusto', 'situacao', 'estoque.minimo', 'estoque.maximo', 'gtin', 'marca', 'descricaoCurta', 'peso_bruto', 'peso_liquido', 'largura', 'altura', 'profundidade', 'unidade'],
+  shopee: ['item_name', 'original_price', 'stock', 'category_id', 'description', 'images', 'weight', 'dimension.package_height', 'dimension.package_width', 'dimension.package_length', 'item_sku', 'logistics'],
+  shopify: ['title', 'body_html', 'vendor', 'product_type', 'variants.price', 'variants.sku', 'variants.barcode', 'variants.inventory_quantity', 'variants.weight', 'images'],
+  woocommerce: ['name', 'description', 'regular_price', 'sku', 'manage_stock', 'stock_quantity', 'weight', 'dimensions.length', 'dimensions.width', 'dimensions.height', 'images', 'categories'],
+  amazon: ['item_name', 'brand_name', 'bullet_point', 'standard_price', 'quantity', 'main_image_url', 'external_product_id', 'item_type', 'shipping_weight'],
+  magalu: ['nome', 'preco', 'sku', 'estoque', 'descricao', 'categoria', 'marca', 'imagens', 'peso', 'altura', 'largura', 'profundidade', 'ean'],
+};
 
 const SYSTEM_FIELDS = [
   { value: 'nome', label: 'Nome do Produto' },
@@ -32,8 +44,10 @@ const SYSTEM_FIELDS = [
   { value: 'categoria', label: 'Categoria' },
   { value: 'preco_venda', label: 'Preço de Venda' },
   { value: 'preco_custo', label: 'Preço de Custo' },
+  { value: 'margem_padrao', label: 'Margem Padrão (%)' },
   { value: 'estoque_atual', label: 'Estoque Atual' },
   { value: 'estoque_minimo', label: 'Estoque Mínimo' },
+  { value: 'estoque_maximo', label: 'Estoque Máximo' },
   { value: 'unidade_medida', label: 'Unidade de Medida' },
   { value: 'ncm', label: 'NCM' },
   { value: 'cest', label: 'CEST' },
@@ -45,6 +59,7 @@ const SYSTEM_FIELDS = [
   { value: 'fotos', label: 'Fotos' },
   { value: 'ativo', label: 'Ativo' },
   { value: 'variacoes_atributos', label: 'Atributos de Variação' },
+  { value: 'atributos_extras', label: 'Atributos Extras' },
   { value: '_ignorar', label: '— Ignorar campo —' },
 ];
 
@@ -148,24 +163,23 @@ function CreateFieldModal({ open, onClose, onCreated }) {
 
 // ── FieldMappingModal ─────────────────────────────────────────────────────────
 
-function FieldMappingModal({ open, onClose, marketplace, marketplaceFields, existingMappings, companyId, onSaved }) {
+function FieldMappingModal({ open, onClose, marketplace, marketplaceFields, existingMappings, companyId, onSaved, suggestedMappings }) {
   const queryClient = useQueryClient();
   const [mappings, setMappings] = useState({});
   const [systemFields, setSystemFields] = useState(SYSTEM_FIELDS);
-  const [showCreateField, setShowCreateField] = useState(false);
-  const [pendingFieldFor, setPendingFieldFor] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    // Pre-populate from existing mappings
     const initial = {};
     marketplaceFields.forEach(f => {
+      // Priority: suggestedMappings > existingMappings
+      const suggested = suggestedMappings?.find(m => m.marketplace_field === f);
       const found = existingMappings.find(m => m.marketplace_field === f);
-      initial[f] = found ? found.system_field : '';
+      initial[f] = suggested ? suggested.system_field : (found ? found.system_field : '');
     });
     setMappings(initial);
-  }, [open, marketplaceFields, existingMappings]);
+  }, [open, marketplaceFields, existingMappings, suggestedMappings]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -275,6 +289,8 @@ export default function MarketplaceMapping() {
   const [activeTab, setActiveTab] = useState('importar');
   const [connStatus, setConnStatus] = useState(null);
   const [checkingConn, setCheckingConn] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestedMappings, setSuggestedMappings] = useState(null);
 
   const handleCheckConnections = async () => {
     setCheckingConn(true);
@@ -311,11 +327,63 @@ export default function MarketplaceMapping() {
     },
   });
 
+  const handleSuggestWithAI = async () => {
+    if (!selectedMarketplace) return;
+    setAiLoading(true);
+    setSuggestedMappings(null);
+    try {
+      const mlLabel = MARKETPLACES.find(m => m.id === selectedMarketplace)?.label || selectedMarketplace;
+      const mlFields = STATIC_MARKETPLACE_FIELDS[selectedMarketplace] || [];
+      const sysFields = SYSTEM_FIELDS.filter(f => f.value !== '_ignorar').map(f => `${f.value} (${f.label})`);
+      const prompt = `Você é um especialista em integração de marketplaces. Mapeie os campos do marketplace "${mlLabel}" para os campos internos do sistema.
+
+Campos do marketplace ${mlLabel}:
+${mlFields.join(', ')}
+
+Campos internos do sistema:
+${sysFields.join(', ')}
+
+Responda SOMENTE com um array JSON válido no formato [{"marketplace_field": "...", "system_field": "..."}], mapeando apenas os campos que tiverem correspondência clara. Não inclua texto adicional, apenas o JSON.`;
+
+      const result = await base44.integrations.Core.InvokeLLM({
+        prompt,
+        model: 'claude_sonnet_4_6',
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            mappings: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  marketplace_field: { type: 'string' },
+                  system_field: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      const suggested = result?.mappings || [];
+      setSuggestedMappings(suggested);
+      // Use static fields + suggested pre-fill
+      const fields = mlFields.length > 0 ? mlFields : await fetchMarketplaceFields(selectedMarketplace);
+      setMarketplaceFields(fields);
+      setShowMappingModal(true);
+      toast.success(`IA sugeriu ${suggested.length} mapeamentos!`);
+    } catch (err) {
+      toast.error(`Erro na sugestão da IA: ${err.message}`);
+    }
+    setAiLoading(false);
+  };
+
   const handleImport = async () => {
     if (!selectedMarketplace) {
       toast.error('Selecione um marketplace.');
       return;
     }
+    setSuggestedMappings(null);
     setImporting(true);
     try {
       const fields = await fetchMarketplaceFields(selectedMarketplace);
@@ -418,10 +486,16 @@ export default function MarketplaceMapping() {
                         : 'Nenhum mapeamento salvo ainda para este marketplace.'}
                     </p>
                   </div>
-                  <Button onClick={handleImport} disabled={importing} className="gap-2">
-                    {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                    {importing ? 'Buscando campos...' : 'Buscar Campos & Mapear'}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button onClick={handleImport} disabled={importing || aiLoading} className="gap-2">
+                      {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      {importing ? 'Buscando campos...' : 'Buscar Campos & Mapear'}
+                    </Button>
+                    <Button onClick={handleSuggestWithAI} disabled={aiLoading || importing} variant="outline" className="gap-2 border-purple-300 text-purple-700 hover:bg-purple-50">
+                      {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>✨</span>}
+                      {aiLoading ? 'Consultando IA...' : 'Sugerir Mapeamento com IA'}
+                    </Button>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -546,6 +620,7 @@ export default function MarketplaceMapping() {
         existingMappings={existingMappings}
         companyId={selectedCompany !== 'all' ? selectedCompany : undefined}
         onSaved={refetchMappings}
+        suggestedMappings={suggestedMappings}
       />
     </div>
   );
