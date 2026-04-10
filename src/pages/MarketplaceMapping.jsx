@@ -326,7 +326,7 @@ export default function MarketplaceMapping() {
 
   // Filter marketplaces based on what's configured in the company
   const enabledMarketplaces = React.useMemo(() => {
-    if (!company) return MARKETPLACES;
+    if (!company) return []; // loading or no company selected
     const cfg = company.marketplaces_config || {};
     return MARKETPLACES.filter(ml => {
       if (ml.id === 'bling') return !!company.bling_integrated;
@@ -375,18 +375,10 @@ export default function MarketplaceMapping() {
     try {
       const mlLabel = MARKETPLACES.find(m => m.id === selectedMarketplace)?.label || selectedMarketplace;
 
-      // 1. Busca os campos reais do marketplace (fallback para estáticos)
-      let fields = [];
-      try {
-        fields = await fetchMarketplaceFields(selectedMarketplace);
-      } catch {
-        fields = [];
-      }
-      if (!fields || fields.length === 0) {
-        fields = STATIC_MARKETPLACE_FIELDS[selectedMarketplace] || [];
-      }
+      // Usa os campos estáticos conhecidos do marketplace
+      const fields = STATIC_MARKETPLACE_FIELDS[selectedMarketplace] || [];
       if (fields.length === 0) {
-        toast.error('Não foi possível obter os campos do marketplace. Verifique a conexão.');
+        toast.error('Campos não definidos para este marketplace.');
         setAiLoading(false);
         return;
       }
@@ -401,11 +393,10 @@ ${fields.join(', ')}
 Campos internos do sistema:
 ${sysFields.join(', ')}
 
-Mapeie apenas os campos que tiverem correspondência clara e semântica entre o marketplace e o sistema.`;
+Mapeie apenas os campos que tiverem correspondência clara e semântica entre o marketplace e o sistema. Para cada campo do marketplace, indique exatamente qual campo do sistema corresponde (usando o valor exato, ex: nome, sku, preco_venda).`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
-        model: 'claude_sonnet_4_6',
         response_json_schema: {
           type: 'object',
           properties: {
@@ -429,7 +420,7 @@ Mapeie apenas os campos que tiverem correspondência clara e semântica entre o 
       setSuggestedMappings(suggested);
       setMarketplaceFields(fields);
       setShowMappingModal(true);
-      toast.success(`IA sugeriu ${suggested.length} mapeamentos com base em ${fields.length} campos!`);
+      toast.success(`IA sugeriu ${suggested.length} mapeamentos!`);
     } catch (err) {
       toast.error(`Erro na sugestão da IA: ${err.message}`);
     }
