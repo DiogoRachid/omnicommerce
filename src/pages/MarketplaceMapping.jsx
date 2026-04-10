@@ -168,6 +168,8 @@ function FieldMappingModal({ open, onClose, marketplace, marketplaceFields, exis
   const [mappings, setMappings] = useState({});
   const [systemFields, setSystemFields] = useState(SYSTEM_FIELDS);
   const [saving, setSaving] = useState(false);
+  const [showCreateField, setShowCreateField] = useState(false);
+  const [pendingFieldFor, setPendingFieldFor] = useState(null);
 
   useEffect(() => {
     if (!open) return;
