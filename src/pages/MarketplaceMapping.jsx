@@ -330,9 +330,9 @@ export default function MarketplaceMapping() {
     const cfg = company.marketplaces_config || {};
     return MARKETPLACES.filter(ml => {
       if (ml.id === 'bling') return !!company.bling_integrated;
-      if (ml.id === 'mercado_livre') return !!cfg.mercado_livre?.enabled;
-      if (ml.id === 'shopee') return !!cfg.shopee?.enabled;
-      if (ml.id === 'amazon') return !!cfg.amazon?.enabled;
+      if (ml.id === 'mercado_livre') return !!cfg.mercado_livre?.enabled || !!cfg.mercado_livre?.access_token;
+      if (ml.id === 'shopee') return !!cfg.shopee?.enabled || !!cfg.shopee?.access_token;
+      if (ml.id === 'amazon') return !!cfg.amazon?.enabled || !!cfg.amazon?.access_token;
       if (ml.id === 'magalu') return !!cfg.magalu?.enabled;
       if (ml.id === 'shopify') return !!cfg.shopify?.enabled;
       if (ml.id === 'woocommerce') return !!cfg.woocommerce?.enabled;
