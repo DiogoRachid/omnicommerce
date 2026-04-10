@@ -201,13 +201,13 @@ function Step2({ selectedIds, categorias, onNext, onBack }) {
                   </div>
                 </button>
                 {isLoaded && attrs?.length > 0 && (
-                  <div className="p-3 grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto">
+                  <div className="p-3 grid grid-cols-1 gap-1.5 max-h-60 overflow-y-auto">
                     {attrs.map(a => (
                       <div key={a.id} className="flex items-start gap-2 text-xs p-1.5 rounded bg-background border">
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <span className="font-medium">{a.nome_atributo}</span>
                           {a.valores_possiveis && (
-                            <p className="text-muted-foreground truncate mt-0.5">
+                            <p className="text-muted-foreground mt-0.5 break-words whitespace-normal">
                               {typeof a.valores_possiveis === 'string' ? a.valores_possiveis : a.valores_possiveis.join(', ')}
                             </p>
                           )}
