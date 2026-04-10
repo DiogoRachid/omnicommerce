@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -316,6 +316,30 @@ export default function MarketplaceMapping() {
     setCheckingConn(false);
   };
 
+  const { data: company } = useQuery({
+    queryKey: ['company', selectedCompany],
+    queryFn: () => selectedCompany && selectedCompany !== 'all'
+      ? base44.entities.Company.filter({ id: selectedCompany }).then(r => r?.[0])
+      : null,
+    enabled: !!selectedCompany && selectedCompany !== 'all',
+  });
+
+  // Filter marketplaces based on what's configured in the company
+  const enabledMarketplaces = React.useMemo(() => {
+    if (!company) return MARKETPLACES;
+    const cfg = company.marketplaces_config || {};
+    return MARKETPLACES.filter(ml => {
+      if (ml.id === 'bling') return !!company.bling_integrated;
+      if (ml.id === 'mercado_livre') return !!cfg.mercado_livre?.enabled;
+      if (ml.id === 'shopee') return !!cfg.shopee?.enabled;
+      if (ml.id === 'amazon') return !!cfg.amazon?.enabled;
+      if (ml.id === 'magalu') return !!cfg.magalu?.enabled;
+      if (ml.id === 'shopify') return !!cfg.shopify?.enabled;
+      if (ml.id === 'woocommerce') return !!cfg.woocommerce?.enabled;
+      return false;
+    });
+  }, [company]);
+
   const { data: mappings = [], refetch: refetchMappings } = useQuery({
     queryKey: ['field_mappings', selectedCompany],
     queryFn: () => {
@@ -495,7 +519,7 @@ Mapeie apenas os campos que tiverem correspondência clara e semântica entre o 
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-3 mb-4">
-                {MARKETPLACES.map(ml => (
+                {(selectedCompany && selectedCompany !== 'all' ? enabledMarketplaces : MARKETPLACES).map(ml => (
                   <button
                     key={ml.id}
                     onClick={() => setSelectedMarketplace(ml.id)}
@@ -538,7 +562,7 @@ Mapeie apenas os campos que tiverem correspondência clara e semântica entre o 
 
         {/* ── Tab: Mapeamentos ── */}
         <TabsContent value="mapeamentos" className="space-y-4 mt-4">
-          {MARKETPLACES.map(ml => {
+          {(selectedCompany && selectedCompany !== 'all' ? enabledMarketplaces : MARKETPLACES).map(ml => {
             const mlMappings = groupedMappings[ml.id] || [];
             if (mlMappings.length === 0) return null;
             return (
@@ -622,8 +646,8 @@ Mapeie apenas os campos que tiverem correspondência clara e semântica entre o 
                     {importLogs.map(log => (
                       <tr key={log.id} className="hover:bg-accent/20">
                         <td className="border border-border px-3 py-1.5">
-                          <Badge className={MARKETPLACES.find(m => m.id === log.marketplace)?.color || ''}>
-                            {MARKETPLACES.find(m => m.id === log.marketplace)?.label || log.marketplace}
+                          <Badge className={[...MARKETPLACES].find(m => m.id === log.marketplace)?.color || ''}>
+                            {[...MARKETPLACES].find(m => m.id === log.marketplace)?.label || log.marketplace}
                           </Badge>
                         </td>
                         <td className="border border-border px-3 py-1.5 text-right">{log.total_imported ?? 0}</td>
