@@ -335,17 +335,34 @@ export default function MarketplaceMapping() {
     setSuggestedMappings(null);
     try {
       const mlLabel = MARKETPLACES.find(m => m.id === selectedMarketplace)?.label || selectedMarketplace;
-      const mlFields = STATIC_MARKETPLACE_FIELDS[selectedMarketplace] || [];
+
+      // 1. Busca os campos reais do marketplace (fallback para estáticos)
+      let fields = [];
+      try {
+        fields = await fetchMarketplaceFields(selectedMarketplace);
+      } catch {
+        fields = [];
+      }
+      if (!fields || fields.length === 0) {
+        fields = STATIC_MARKETPLACE_FIELDS[selectedMarketplace] || [];
+      }
+      if (fields.length === 0) {
+        toast.error('Não foi possível obter os campos do marketplace. Verifique a conexão.');
+        setAiLoading(false);
+        return;
+      }
+
+      // 2. Chama a IA com os campos encontrados
       const sysFields = SYSTEM_FIELDS.filter(f => f.value !== '_ignorar').map(f => `${f.value} (${f.label})`);
       const prompt = `Você é um especialista em integração de marketplaces. Mapeie os campos do marketplace "${mlLabel}" para os campos internos do sistema.
 
 Campos do marketplace ${mlLabel}:
-${mlFields.join(', ')}
+${fields.join(', ')}
 
 Campos internos do sistema:
 ${sysFields.join(', ')}
 
-Responda SOMENTE com um array JSON válido no formato [{"marketplace_field": "...", "system_field": "..."}], mapeando apenas os campos que tiverem correspondência clara. Não inclua texto adicional, apenas o JSON.`;
+Mapeie apenas os campos que tiverem correspondência clara e semântica entre o marketplace e o sistema.`;
 
       const result = await base44.integrations.Core.InvokeLLM({
         prompt,
@@ -360,20 +377,20 @@ Responda SOMENTE com um array JSON válido no formato [{"marketplace_field": "..
                 properties: {
                   marketplace_field: { type: 'string' },
                   system_field: { type: 'string' }
-                }
+                },
+                required: ['marketplace_field', 'system_field']
               }
             }
-          }
+          },
+          required: ['mappings']
         }
       });
 
       const suggested = result?.mappings || [];
       setSuggestedMappings(suggested);
-      // Use static fields + suggested pre-fill
-      const fields = mlFields.length > 0 ? mlFields : await fetchMarketplaceFields(selectedMarketplace);
       setMarketplaceFields(fields);
       setShowMappingModal(true);
-      toast.success(`IA sugeriu ${suggested.length} mapeamentos!`);
+      toast.success(`IA sugeriu ${suggested.length} mapeamentos com base em ${fields.length} campos!`);
     } catch (err) {
       toast.error(`Erro na sugestão da IA: ${err.message}`);
     }
