@@ -31,7 +31,7 @@ function Steps({ current }) {
 }
 
 // ── Step 1: Selecionar Categorias ─────────────────────────────────────────────
-function Step1({ onNext }) {
+function Step1({ onNext }) { // onNext(ids, selectedCats)
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -143,7 +143,7 @@ function Step1({ onNext }) {
         )}
 
         <div className="flex justify-end pt-2 border-t">
-          <Button onClick={() => onNext(selectedIds)} disabled={selectedCount === 0}>
+          <Button onClick={() => onNext(selectedIds, categorias.filter(c => selected[c.id]))} disabled={selectedCount === 0}>
             Continuar <ChevronRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
@@ -350,10 +350,9 @@ export default function ImportarCategorias() {
 
       {step === 0 && (
         <Step1
-          onNext={(ids) => {
+          onNext={(ids, cats) => {
             setSelectedIds(ids.map(String));
-            base44.functions.invoke('supabaseCategories', { action: 'listCategorias', payload: { nivel: 1, limit: 1000, offset: 0 } })
-              .then(r => setCategorias(r.data?.data || []));
+            setCategorias(cats);
             setStep(1);
           }}
         />
