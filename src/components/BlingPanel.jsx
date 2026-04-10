@@ -37,6 +37,7 @@ async function callProxy(action, payload = {}) {
 export default function BlingPanel() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [msg, setMsg] = useState('');
   const [msgType, setMsgType] = useState('info');
 
@@ -91,12 +92,19 @@ export default function BlingPanel() {
   };
 
   const handleRefresh = async () => {
-    setLoading(true);
+    setRefreshing(true);
     setMsg('Renovando token...');
-    await callProxy('refresh');
-    setMsg('Token renovado!');
-    setMsgType('success');
-    await checkStatus();
+    setMsgType('info');
+    try {
+      await callProxy('refresh');
+      setMsg('Token renovado com sucesso!');
+      setMsgType('success');
+      await checkStatus();
+    } catch (err) {
+      setMsg(`Falha ao renovar: ${err.message || 'Erro desconhecido'}. Reconecte o Bling.`);
+      setMsgType('error');
+    }
+    setRefreshing(false);
   };
 
   const handleListarProdutos = async () => {
@@ -162,21 +170,31 @@ export default function BlingPanel() {
           )}
 
           {status?.connected && (
-            <p className="text-xs text-muted-foreground">
-              Token expira em: {status.expires_at ? new Date(status.expires_at).toLocaleString('pt-BR') : '?'}
-              {status.scope && <> · Escopo: {status.scope}</>}
-            </p>
+            <div className="text-xs text-muted-foreground space-y-0.5">
+              <p>Token expira em: <span className={status.expired ? 'text-destructive font-medium' : ''}>{status.expires_at ? new Date(status.expires_at).toLocaleString('pt-BR') : '?'}</span></p>
+              {status.expired && <p className="text-destructive font-medium">⚠ Token expirado — clique em Renovar Token</p>}
+              {status.scope && <p>Escopo: {status.scope}</p>}
+            </div>
           )}
 
           <div className="flex gap-2 flex-wrap">
             {!status?.connected ? (
-              <Button onClick={handleConnect} className="gap-2 bg-orange-500 hover:bg-orange-600">
-                <ExternalLink className="w-4 h-4" /> Conectar ao Bling
-              </Button>
+              <>
+                <Button onClick={handleConnect} className="gap-2 bg-orange-500 hover:bg-orange-600">
+                  <ExternalLink className="w-4 h-4" /> Conectar ao Bling
+                </Button>
+                <Button onClick={handleRefresh} variant="outline" size="sm" className="gap-1.5" disabled={refreshing}>
+                  {refreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  Renovar Token Existente
+                </Button>
+              </>
             ) : (
               <>
-                <Button onClick={handleRefresh} variant="outline" size="sm" className="gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" /> Renovar Token
+                <Button onClick={handleRefresh} variant="outline" size="sm"
+                  className={`gap-1.5 ${status.expired ? 'border-orange-400 text-orange-700 hover:bg-orange-50' : ''}`}
+                  disabled={refreshing}>
+                  {refreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                  {status.expired ? '⚠ Renovar Token (Expirado)' : 'Renovar Token'}
                 </Button>
                 <Button onClick={handleDisconnect} variant="outline" size="sm" className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10">
                   <LogOut className="w-3.5 h-3.5" /> Desconectar
