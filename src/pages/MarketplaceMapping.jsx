@@ -171,17 +171,32 @@ function FieldMappingModal({ open, onClose, marketplace, marketplaceFields, exis
   const [showCreateField, setShowCreateField] = useState(false);
   const [pendingFieldFor, setPendingFieldFor] = useState(null);
 
+  // Initialize mappings when modal opens or fields change
   useEffect(() => {
     if (!open) return;
     const initial = {};
     marketplaceFields.forEach(f => {
-      // Priority: suggestedMappings > existingMappings
-      const suggested = suggestedMappings?.find(m => m.marketplace_field === f);
       const found = existingMappings.find(m => m.marketplace_field === f);
-      initial[f] = suggested ? suggested.system_field : (found ? found.system_field : '');
+      initial[f] = found ? found.system_field : '';
     });
     setMappings(initial);
-  }, [open, marketplaceFields, existingMappings, suggestedMappings]);
+  }, [open, marketplaceFields, existingMappings]);
+
+  // Apply AI suggestions on top whenever they arrive
+  useEffect(() => {
+    if (!open || !suggestedMappings?.length) return;
+    setMappings(prev => {
+      const updated = { ...prev };
+      suggestedMappings.forEach(s => {
+        if (s.marketplace_field && s.system_field) {
+          // Only apply if the system_field is valid
+          const isValid = SYSTEM_FIELDS.some(sf => sf.value === s.system_field);
+          if (isValid) updated[s.marketplace_field] = s.system_field;
+        }
+      });
+      return updated;
+    });
+  }, [open, suggestedMappings]);
 
   const handleSave = async () => {
     setSaving(true);
