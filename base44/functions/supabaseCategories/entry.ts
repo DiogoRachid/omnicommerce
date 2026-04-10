@@ -24,8 +24,32 @@ Deno.serve(async (req) => {
   const { action, payload = {} } = body;
 
   if (action === 'listCategorias') {
-    const data = await supabaseFetch('categorias?select=id,nome,nivel&order=nome&limit=10000');
-    return Response.json({ data });
+    // By default load nivel=1 only for performance
+    const { nivel = 1, search = '', offset = 0, limit = 1000 } = payload;
+    let path;
+    if (search) {
+      path = `categorias?select=id,nome,nivel&nome=ilike.*${encodeURIComponent(search)}*&order=nome&limit=${limit}&offset=${offset}`;
+    } else {
+      path = `categorias?select=id,nome,nivel&nivel=eq.${nivel}&order=nome&limit=${limit}&offset=${offset}`;
+    }
+    const data = await supabaseFetch(path);
+    return Response.json({ data, offset, limit, count: data.length });
+  }
+
+  if (action === 'listCategoriasPaginated') {
+    // Fetch ALL categorias in batches (for select-all use case)
+    let todas = [];
+    let offset = 0;
+    const limit = 1000;
+    while (true) {
+      const batch = await supabaseFetch(
+        `categorias?select=id,nome,nivel&order=nome&limit=${limit}&offset=${offset}`
+      );
+      todas = todas.concat(batch);
+      if (batch.length < limit) break;
+      offset += limit;
+    }
+    return Response.json({ data: todas, total: todas.length });
   }
 
   if (action === 'getAtributos') {

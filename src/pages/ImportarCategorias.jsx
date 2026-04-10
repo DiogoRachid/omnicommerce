@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -34,33 +34,52 @@ function Steps({ current }) {
 function Step1({ onNext }) {
   const [categorias, setCategorias] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState({});
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const LIMIT = 100;
 
-  useEffect(() => {
-    base44.functions.invoke('supabaseCategories', { action: 'listCategorias' })
-      .then(r => setCategorias(r.data?.data || []))
-      .finally(() => setLoading(false));
+  const fetchPage = useCallback(async (searchTerm, currentOffset, replace) => {
+    replace ? setLoading(true) : setSearching(true);
+    const r = await base44.functions.invoke('supabaseCategories', {
+      action: 'listCategorias',
+      payload: { nivel: 1, search: searchTerm, offset: currentOffset, limit: LIMIT },
+    });
+    const data = r.data?.data || [];
+    setCategorias(prev => replace ? data : [...prev, ...data]);
+    setOffset(currentOffset + data.length);
+    setHasMore(data.length === LIMIT);
+    setLoading(false);
+    setSearching(false);
   }, []);
 
-  const filtered = useMemo(() =>
-    categorias.filter(c => c.nome?.toLowerCase().includes(search.toLowerCase())),
-    [categorias, search]
-  );
+  useEffect(() => { fetchPage('', 0, true); }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const t = setTimeout(() => { fetchPage(search, 0, true); }, 400);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const toggle = (id) => setSelected(p => ({ ...p, [id]: !p[id] }));
+
+  const toggleAll = () => {
+    const allSelected = categorias.length > 0 && categorias.every(c => selected[c.id]);
+    if (allSelected) {
+      const next = { ...selected };
+      categorias.forEach(c => { delete next[c.id]; });
+      setSelected(next);
+    } else {
+      const next = { ...selected };
+      categorias.forEach(c => { next[c.id] = true; });
+      setSelected(next);
+    }
+  };
 
   const selectedIds = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
   const selectedCount = selectedIds.length;
-
-  const toggle = (id) => setSelected(p => ({ ...p, [id]: !p[id] }));
-  const toggleAll = () => {
-    if (selectedCount === filtered.length) {
-      setSelected({});
-    } else {
-      const all = {};
-      filtered.forEach(c => { all[c.id] = true; });
-      setSelected(all);
-    }
-  };
 
   return (
     <Card>
@@ -68,17 +87,22 @@ function Step1({ onNext }) {
         <CardTitle className="flex items-center gap-2 text-base">
           <ListFilter className="w-4 h-4" /> Selecionar Categorias
         </CardTitle>
-        <p className="text-sm text-muted-foreground">Escolha as categorias que esta empresa irá trabalhar. Os atributos serão carregados automaticamente.</p>
+        <p className="text-sm text-muted-foreground">
+          Exibe categorias nível 1. Use a busca para encontrar categorias específicas pelo nome.
+        </p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Buscar categoria..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
+            <Input
+              placeholder="Buscar categoria por nome..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
-          {selectedCount > 0 && (
-            <Badge className="shrink-0">{selectedCount} selecionadas</Badge>
-          )}
+          {selectedCount > 0 && <Badge className="shrink-0">{selectedCount} selecionadas</Badge>}
         </div>
 
         {loading ? (
@@ -88,18 +112,32 @@ function Step1({ onNext }) {
         ) : (
           <>
             <div className="flex items-center gap-2 text-xs text-muted-foreground pb-1 border-b">
-              <Checkbox checked={selectedCount === filtered.length && filtered.length > 0}
-                onCheckedChange={toggleAll} />
-              <span>{filtered.length} categorias encontradas</span>
+              <Checkbox
+                checked={categorias.length > 0 && categorias.every(c => selected[c.id])}
+                onCheckedChange={toggleAll}
+              />
+              <span>{categorias.length}{hasMore ? '+' : ''} categorias carregadas</span>
+              {searching && <Loader2 className="w-3 h-3 animate-spin" />}
             </div>
-            <div className="max-h-[55vh] overflow-y-auto space-y-0.5 pr-1">
-              {filtered.map(c => (
+
+            <div className="max-h-[50vh] overflow-y-auto space-y-0.5 pr-1">
+              {categorias.map(c => (
                 <label key={c.id} className="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-accent/40 cursor-pointer">
                   <Checkbox checked={!!selected[c.id]} onCheckedChange={() => toggle(c.id)} />
                   <span className="text-sm flex-1">{c.nome}</span>
                   {c.nivel && <Badge variant="outline" className="text-[10px]">Nível {c.nivel}</Badge>}
                 </label>
               ))}
+              {hasMore && (
+                <button
+                  onClick={() => fetchPage(search, offset, false)}
+                  disabled={searching}
+                  className="w-full py-2 text-xs text-primary hover:underline flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {searching ? <Loader2 className="w-3 h-3 animate-spin" /> : <ChevronRight className="w-3 h-3" />}
+                  Carregar mais
+                </button>
+              )}
             </div>
           </>
         )}
@@ -133,7 +171,6 @@ function Step2({ selectedIds, categorias, onNext, onBack }) {
   };
 
   useEffect(() => {
-    // Load first 5 automatically
     selectedIds.slice(0, 5).forEach(id => loadAtributos(id));
   }, []);
 
@@ -143,7 +180,7 @@ function Step2({ selectedIds, categorias, onNext, onBack }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Atributos das Categorias Selecionadas</CardTitle>
-        <p className="text-sm text-muted-foreground">Confira os atributos/variações de cada categoria. Clique em uma categoria para carregar seus atributos.</p>
+        <p className="text-sm text-muted-foreground">Clique em uma categoria para carregar seus atributos sob demanda.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
@@ -170,9 +207,9 @@ function Step2({ selectedIds, categorias, onNext, onBack }) {
                         <div className="flex-1">
                           <span className="font-medium">{a.nome_atributo}</span>
                           {a.valores_possiveis && (
-                            <p className="text-muted-foreground truncate mt-0.5">{
-                              typeof a.valores_possiveis === 'string' ? a.valores_possiveis : a.valores_possiveis.join(', ')
-                            }</p>
+                            <p className="text-muted-foreground truncate mt-0.5">
+                              {typeof a.valores_possiveis === 'string' ? a.valores_possiveis : a.valores_possiveis.join(', ')}
+                            </p>
                           )}
                         </div>
                         {a.obrigatorio && <Badge className="text-[9px] h-4 px-1 shrink-0">Obrig.</Badge>}
@@ -243,7 +280,7 @@ function Step3({ selectedIds, categorias, atributosPorCategoria, onBack, company
         <p className="text-sm text-muted-foreground">Resumo do que será importado para o sistema.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-primary">{selectedCats.length}</p>
             <p className="text-xs text-muted-foreground">Categorias</p>
@@ -261,7 +298,7 @@ function Step3({ selectedIds, categorias, atributosPorCategoria, onBack, company
             <div key={c.id} className="flex items-center justify-between text-sm px-3 py-1.5 rounded-md bg-muted/30">
               <span>{c.nome}</span>
               <Badge variant="outline" className="text-xs">
-                {atributosPorCategoria[c.id]?.length || '?'} atributos
+                {atributosPorCategoria[c.id]?.length ?? '—'} atributos
               </Badge>
             </div>
           ))}
@@ -270,8 +307,7 @@ function Step3({ selectedIds, categorias, atributosPorCategoria, onBack, company
         {importing && (
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Importando...</span>
-              <span>{progress}%</span>
+              <span>Importando...</span><span>{progress}%</span>
             </div>
             <div className="w-full bg-muted rounded-full h-2">
               <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
@@ -305,7 +341,9 @@ export default function ImportarCategorias() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Download className="w-6 h-6" /> Importar Categorias
         </h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Selecione e importe categorias do banco de dados global para esta empresa.</p>
+        <p className="text-muted-foreground text-sm mt-0.5">
+          Selecione e importe categorias do banco global para esta empresa.
+        </p>
       </div>
 
       <Steps current={step} />
@@ -314,8 +352,7 @@ export default function ImportarCategorias() {
         <Step1
           onNext={(ids) => {
             setSelectedIds(ids.map(String));
-            // We need categorias list for steps 2 and 3 - fetch it again
-            base44.functions.invoke('supabaseCategories', { action: 'listCategorias' })
+            base44.functions.invoke('supabaseCategories', { action: 'listCategorias', payload: { nivel: 1, limit: 1000, offset: 0 } })
               .then(r => setCategorias(r.data?.data || []));
             setStep(1);
           }}
