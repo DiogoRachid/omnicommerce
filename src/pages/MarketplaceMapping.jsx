@@ -509,21 +509,31 @@ Mapeie apenas os campos que tiverem correspondência clara e semântica entre o 
               <CardTitle className="text-base flex items-center gap-2"><Package className="w-4 h-4" /> Selecionar Marketplace</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-3 mb-4">
-                {(selectedCompany && selectedCompany !== 'all' ? enabledMarketplaces : MARKETPLACES).map(ml => (
-                  <button
-                    key={ml.id}
-                    onClick={() => setSelectedMarketplace(ml.id)}
-                    className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-                      selectedMarketplace === ml.id
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-border text-muted-foreground hover:border-muted-foreground'
-                    }`}
-                  >
-                    {ml.label}
-                  </button>
-                ))}
-              </div>
+              {(!selectedCompany || selectedCompany === 'all') ? (
+                <div className="text-sm text-muted-foreground bg-muted/40 rounded-lg p-4">
+                  Selecione uma empresa no menu superior para ver os marketplaces habilitados.
+                </div>
+              ) : enabledMarketplaces.length === 0 ? (
+                <div className="text-sm text-muted-foreground bg-muted/40 rounded-lg p-4">
+                  Nenhum marketplace habilitado para esta empresa. Configure em <strong>Empresas → Editar → Bling / Mercado Livre / Outros MP</strong>.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-3 mb-4">
+                  {enabledMarketplaces.map(ml => (
+                    <button
+                      key={ml.id}
+                      onClick={() => setSelectedMarketplace(ml.id)}
+                      className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                        selectedMarketplace === ml.id
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border text-muted-foreground hover:border-muted-foreground'
+                      }`}
+                    >
+                      {ml.label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {selectedMarketplace && (
                 <div className="space-y-3">
