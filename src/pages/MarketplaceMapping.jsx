@@ -1,0 +1,518 @@
+import React, { useState, useEffect } from 'react';
+import { useOutletContext } from 'react-router-dom';
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { toast } from 'sonner';
+import { Download, Trash2, Edit, Plus, Loader2, ArrowRight, Map, Package, FileText } from 'lucide-react';
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const MARKETPLACES = [
+  { id: 'mercado_livre', label: 'Mercado Livre', color: 'bg-yellow-100 text-yellow-800' },
+  { id: 'bling', label: 'Bling', color: 'bg-blue-100 text-blue-800' },
+  { id: 'shopee', label: 'Shopee', color: 'bg-orange-100 text-orange-800' },
+  { id: 'shopify', label: 'Shopify', color: 'bg-green-100 text-green-800' },
+  { id: 'woocommerce', label: 'WooCommerce', color: 'bg-purple-100 text-purple-800' },
+];
+
+const SYSTEM_FIELDS = [
+  { value: 'nome', label: 'Nome do Produto' },
+  { value: 'sku', label: 'SKU' },
+  { value: 'ean', label: 'EAN/GTIN' },
+  { value: 'descricao', label: 'Descrição' },
+  { value: 'marca', label: 'Marca' },
+  { value: 'categoria', label: 'Categoria' },
+  { value: 'preco_venda', label: 'Preço de Venda' },
+  { value: 'preco_custo', label: 'Preço de Custo' },
+  { value: 'estoque_atual', label: 'Estoque Atual' },
+  { value: 'estoque_minimo', label: 'Estoque Mínimo' },
+  { value: 'unidade_medida', label: 'Unidade de Medida' },
+  { value: 'ncm', label: 'NCM' },
+  { value: 'cest', label: 'CEST' },
+  { value: 'peso_bruto_kg', label: 'Peso Bruto (kg)' },
+  { value: 'peso_liquido_kg', label: 'Peso Líquido (kg)' },
+  { value: 'altura_cm', label: 'Altura (cm)' },
+  { value: 'largura_cm', label: 'Largura (cm)' },
+  { value: 'comprimento_cm', label: 'Comprimento (cm)' },
+  { value: 'fotos', label: 'Fotos' },
+  { value: 'ativo', label: 'Ativo' },
+  { value: 'variacoes_atributos', label: 'Atributos de Variação' },
+  { value: '_ignorar', label: '— Ignorar campo —' },
+];
+
+// ── Helper to fetch sample fields from marketplace ────────────────────────────
+
+async function fetchMarketplaceFields(marketplace, companyId) {
+  if (marketplace === 'bling') {
+    const res = await base44.functions.invoke('blingProxy', {
+      action: 'list_products',
+      company_id: companyId,
+      limit: 1,
+    });
+    const products = res?.data?.products || res?.data?.data || [];
+    if (products.length === 0) return [];
+    return Object.keys(flattenObj(products[0]));
+  }
+
+  if (marketplace === 'mercado_livre') {
+    const res = await base44.functions.invoke('mlProxy', {
+      action: 'list_products',
+      company_id: companyId,
+      limit: 1,
+    });
+    const products = res?.data?.results || res?.data?.items || [];
+    if (products.length === 0) return [];
+    return Object.keys(flattenObj(products[0]));
+  }
+
+  // Generic fallback — return common fields
+  return ['title', 'price', 'sku', 'description', 'category_id', 'quantity', 'gtin', 'images', 'status'];
+}
+
+function flattenObj(obj, prefix = '') {
+  return Object.keys(obj || {}).reduce((acc, k) => {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (obj[k] && typeof obj[k] === 'object' && !Array.isArray(obj[k])) {
+      Object.assign(acc, flattenObj(obj[k], key));
+    } else {
+      acc[key] = obj[k];
+    }
+    return acc;
+  }, {});
+}
+
+// ── CreateFieldModal ──────────────────────────────────────────────────────────
+
+function CreateFieldModal({ open, onClose, onCreated }) {
+  const [form, setForm] = useState({ value: '', label: '', type: 'text', required: false });
+
+  const handleCreate = () => {
+    if (!form.value.trim() || !form.label.trim()) {
+      toast.error('Preencha nome e label do campo.');
+      return;
+    }
+    onCreated({ value: form.value.trim(), label: form.label.trim() });
+    setForm({ value: '', label: '', type: 'text', required: false });
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Criar novo campo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <Label>Chave do campo (ex: voltagem)</Label>
+            <Input value={form.value} onChange={e => setForm(p => ({ ...p, value: e.target.value }))} placeholder="voltagem" />
+          </div>
+          <div>
+            <Label>Label (ex: Voltagem)</Label>
+            <Input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="Voltagem" />
+          </div>
+          <div>
+            <Label>Tipo</Label>
+            <Select value={form.type} onValueChange={v => setForm(p => ({ ...p, type: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">Texto</SelectItem>
+                <SelectItem value="number">Número</SelectItem>
+                <SelectItem value="boolean">Booleano</SelectItem>
+                <SelectItem value="list">Lista</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleCreate}>Criar Campo</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── FieldMappingModal ─────────────────────────────────────────────────────────
+
+function FieldMappingModal({ open, onClose, marketplace, marketplaceFields, existingMappings, companyId, onSaved }) {
+  const queryClient = useQueryClient();
+  const [mappings, setMappings] = useState({});
+  const [systemFields, setSystemFields] = useState(SYSTEM_FIELDS);
+  const [showCreateField, setShowCreateField] = useState(false);
+  const [pendingFieldFor, setPendingFieldFor] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    // Pre-populate from existing mappings
+    const initial = {};
+    marketplaceFields.forEach(f => {
+      const found = existingMappings.find(m => m.marketplace_field === f);
+      initial[f] = found ? found.system_field : '';
+    });
+    setMappings(initial);
+  }, [open, marketplaceFields, existingMappings]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    let saved = 0;
+    for (const [mf, sf] of Object.entries(mappings)) {
+      if (!sf) continue;
+      const existing = existingMappings.find(m => m.marketplace_field === mf);
+      if (existing) {
+        await base44.entities.MarketplaceFieldMapping.update(existing.id, { system_field: sf });
+      } else {
+        await base44.entities.MarketplaceFieldMapping.create({
+          marketplace, marketplace_field: mf, system_field: sf, company_id: companyId,
+        });
+      }
+      saved++;
+    }
+    queryClient.invalidateQueries({ queryKey: ['field_mappings'] });
+    toast.success(`${saved} mapeamentos salvos!`);
+    setSaving(false);
+    onSaved();
+    onClose();
+  };
+
+  const mlLabel = MARKETPLACES.find(m => m.id === marketplace)?.label || marketplace;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mapeamento de Campos — {mlLabel}</DialogTitle>
+            <p className="text-sm text-muted-foreground">Associe cada campo do marketplace ao campo correspondente no sistema.</p>
+          </DialogHeader>
+
+          <div className="grid grid-cols-[1fr_32px_1fr] gap-2 items-center text-xs font-semibold text-muted-foreground mb-1 px-1">
+            <span>Campo no {mlLabel}</span>
+            <span />
+            <span>Campo no Sistema</span>
+          </div>
+
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+            {marketplaceFields.map(f => (
+              <div key={f} className="grid grid-cols-[1fr_32px_1fr] gap-2 items-center">
+                <div className="bg-muted/50 rounded px-3 py-2 text-xs font-mono truncate">{f}</div>
+                <ArrowRight className="w-4 h-4 text-muted-foreground mx-auto" />
+                <div className="flex gap-1">
+                  <Select
+                    value={mappings[f] || ''}
+                    onValueChange={v => setMappings(p => ({ ...p, [f]: v }))}
+                  >
+                    <SelectTrigger className="h-8 text-xs flex-1">
+                      <SelectValue placeholder="Selecionar..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {systemFields.map(sf => (
+                        <SelectItem key={sf.value} value={sf.value} className="text-xs">{sf.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="icon" variant="ghost" className="h-8 w-8 shrink-0"
+                    title="Criar novo campo"
+                    onClick={() => { setPendingFieldFor(f); setShowCreateField(true); }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>Cancelar</Button>
+            <Button onClick={handleSave} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              Salvar Mapeamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CreateFieldModal
+        open={showCreateField}
+        onClose={() => setShowCreateField(false)}
+        onCreated={(newField) => {
+          setSystemFields(prev => [...prev, newField]);
+          if (pendingFieldFor) {
+            setMappings(p => ({ ...p, [pendingFieldFor]: newField.value }));
+          }
+          toast.success(`Campo "${newField.label}" criado!`);
+        }}
+      />
+    </>
+  );
+}
+
+// ── Main Page ─────────────────────────────────────────────────────────────────
+
+export default function MarketplaceMapping() {
+  const { selectedCompany } = useOutletContext();
+  const queryClient = useQueryClient();
+
+  const [selectedMarketplace, setSelectedMarketplace] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [marketplaceFields, setMarketplaceFields] = useState([]);
+  const [activeTab, setActiveTab] = useState('importar');
+
+  const { data: mappings = [], refetch: refetchMappings } = useQuery({
+    queryKey: ['field_mappings', selectedCompany],
+    queryFn: () => {
+      if (selectedCompany && selectedCompany !== 'all') {
+        return base44.entities.MarketplaceFieldMapping.filter({ company_id: selectedCompany }, '-created_date', 500);
+      }
+      return base44.entities.MarketplaceFieldMapping.list('-created_date', 500);
+    },
+  });
+
+  const { data: importLogs = [] } = useQuery({
+    queryKey: ['import_logs', selectedCompany],
+    queryFn: () => {
+      if (selectedCompany && selectedCompany !== 'all') {
+        return base44.entities.MarketplaceImportLog.filter({ company_id: selectedCompany }, '-created_date', 50);
+      }
+      return base44.entities.MarketplaceImportLog.list('-created_date', 50);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) => base44.entities.MarketplaceFieldMapping.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['field_mappings'] });
+      toast.success('Mapeamento removido.');
+    },
+  });
+
+  const handleImport = async () => {
+    if (!selectedMarketplace) {
+      toast.error('Selecione um marketplace.');
+      return;
+    }
+    setImporting(true);
+    try {
+      const fields = await fetchMarketplaceFields(selectedMarketplace, selectedCompany);
+      if (fields.length === 0) {
+        toast.warning('Nenhum campo encontrado. Verifique a conexão com o marketplace.');
+        setImporting(false);
+        return;
+      }
+      setMarketplaceFields(fields);
+      setShowMappingModal(true);
+    } catch (err) {
+      toast.error(`Erro ao importar: ${err.message}`);
+      await base44.entities.MarketplaceImportLog.create({
+        marketplace: selectedMarketplace,
+        total_imported: 0,
+        total_errors: 1,
+        imported_at: new Date().toISOString(),
+        status: 'erro',
+        detalhes: err.message,
+        company_id: selectedCompany !== 'all' ? selectedCompany : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ['import_logs'] });
+    }
+    setImporting(false);
+  };
+
+  // Group mappings by marketplace
+  const groupedMappings = MARKETPLACES.reduce((acc, ml) => {
+    acc[ml.id] = mappings.filter(m => m.marketplace === ml.id);
+    return acc;
+  }, {});
+
+  const existingMappings = mappings.filter(m => m.marketplace === selectedMarketplace);
+  const mlInfo = MARKETPLACES.find(m => m.id === selectedMarketplace);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Map className="w-6 h-6" /> Mapeamento de Marketplaces</h1>
+        <p className="text-muted-foreground text-sm mt-0.5">Importe produtos e configure o mapeamento de campos por marketplace.</p>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="importar" className="gap-2"><Download className="w-4 h-4" /> Importar & Mapear</TabsTrigger>
+          <TabsTrigger value="mapeamentos" className="gap-2"><Map className="w-4 h-4" /> Mapeamentos Salvos</TabsTrigger>
+          <TabsTrigger value="logs" className="gap-2"><FileText className="w-4 h-4" /> Logs</TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab: Importar ── */}
+        <TabsContent value="importar" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2"><Package className="w-4 h-4" /> Selecionar Marketplace</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-3 mb-4">
+                {MARKETPLACES.map(ml => (
+                  <button
+                    key={ml.id}
+                    onClick={() => setSelectedMarketplace(ml.id)}
+                    className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                      selectedMarketplace === ml.id
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-border text-muted-foreground hover:border-muted-foreground'
+                    }`}
+                  >
+                    {ml.label}
+                  </button>
+                ))}
+              </div>
+
+              {selectedMarketplace && (
+                <div className="space-y-3">
+                  <div className="bg-muted/40 rounded-lg p-3 text-sm">
+                    <p className="font-medium">{mlInfo?.label}</p>
+                    <p className="text-muted-foreground text-xs mt-0.5">
+                      {existingMappings.length > 0
+                        ? `${existingMappings.length} mapeamentos existentes serão pré-carregados.`
+                        : 'Nenhum mapeamento salvo ainda para este marketplace.'}
+                    </p>
+                  </div>
+                  <Button onClick={handleImport} disabled={importing} className="gap-2">
+                    {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {importing ? 'Buscando campos...' : 'Buscar Campos & Mapear'}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tab: Mapeamentos ── */}
+        <TabsContent value="mapeamentos" className="space-y-4 mt-4">
+          {MARKETPLACES.map(ml => {
+            const mlMappings = groupedMappings[ml.id] || [];
+            if (mlMappings.length === 0) return null;
+            return (
+              <Card key={ml.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Badge className={ml.color}>{ml.label}</Badge>
+                    <span className="font-normal text-muted-foreground">{mlMappings.length} mapeamentos</span>
+                    <Button
+                      size="sm" variant="outline" className="ml-auto h-7 text-xs gap-1"
+                      onClick={() => {
+                        setSelectedMarketplace(ml.id);
+                        setMarketplaceFields(mlMappings.map(m => m.marketplace_field));
+                        setShowMappingModal(true);
+                      }}
+                    >
+                      <Edit className="w-3 h-3" /> Editar
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-muted/30">
+                        <th className="border border-border px-3 py-1.5 text-left">Campo no Marketplace</th>
+                        <th className="border border-border px-3 py-1.5 text-left">Campo no Sistema</th>
+                        <th className="border border-border px-3 py-1.5 w-16 text-center">Ação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mlMappings.map(m => (
+                        <tr key={m.id} className="hover:bg-accent/20">
+                          <td className="border border-border px-3 py-1.5 font-mono">{m.marketplace_field}</td>
+                          <td className="border border-border px-3 py-1.5">
+                            {SYSTEM_FIELDS.find(sf => sf.value === m.system_field)?.label || m.system_field}
+                          </td>
+                          <td className="border border-border px-3 py-1.5 text-center">
+                            <Button
+                              size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:bg-destructive/10"
+                              onClick={() => deleteMutation.mutate(m.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {mappings.length === 0 && (
+            <div className="border rounded-lg p-12 text-center bg-card">
+              <Map className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-medium">Nenhum mapeamento salvo ainda.</p>
+              <p className="text-sm text-muted-foreground mt-1">Use a aba "Importar & Mapear" para criar mapeamentos.</p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Tab: Logs ── */}
+        <TabsContent value="logs" className="mt-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Histórico de Importações</CardTitle></CardHeader>
+            <CardContent>
+              {importLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">Nenhum log de importação ainda.</p>
+              ) : (
+                <table className="w-full text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-muted/30">
+                      <th className="border border-border px-3 py-1.5 text-left">Marketplace</th>
+                      <th className="border border-border px-3 py-1.5 text-right">Importados</th>
+                      <th className="border border-border px-3 py-1.5 text-right">Erros</th>
+                      <th className="border border-border px-3 py-1.5 text-left">Status</th>
+                      <th className="border border-border px-3 py-1.5 text-left">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importLogs.map(log => (
+                      <tr key={log.id} className="hover:bg-accent/20">
+                        <td className="border border-border px-3 py-1.5">
+                          <Badge className={MARKETPLACES.find(m => m.id === log.marketplace)?.color || ''}>
+                            {MARKETPLACES.find(m => m.id === log.marketplace)?.label || log.marketplace}
+                          </Badge>
+                        </td>
+                        <td className="border border-border px-3 py-1.5 text-right">{log.total_imported ?? 0}</td>
+                        <td className="border border-border px-3 py-1.5 text-right text-destructive">{log.total_errors ?? 0}</td>
+                        <td className="border border-border px-3 py-1.5">
+                          <Badge variant={log.status === 'sucesso' ? 'default' : log.status === 'parcial' ? 'secondary' : 'destructive'}>
+                            {log.status}
+                          </Badge>
+                        </td>
+                        <td className="border border-border px-3 py-1.5 text-muted-foreground">
+                          {log.imported_at ? new Date(log.imported_at).toLocaleString('pt-BR') : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <FieldMappingModal
+        open={showMappingModal}
+        onClose={() => setShowMappingModal(false)}
+        marketplace={selectedMarketplace}
+        marketplaceFields={marketplaceFields}
+        existingMappings={existingMappings}
+        companyId={selectedCompany !== 'all' ? selectedCompany : undefined}
+        onSaved={refetchMappings}
+      />
+    </div>
+  );
+}

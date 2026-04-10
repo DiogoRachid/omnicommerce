@@ -1,0 +1,47 @@
+{
+  "name": "MarketplaceImportLog",
+  "type": "object",
+  "properties": {
+    "marketplace": {
+      "type": "string",
+      "enum": [
+        "mercado_livre",
+        "bling",
+        "shopee",
+        "shopify",
+        "woocommerce"
+      ]
+    },
+    "total_imported": {
+      "type": "number",
+      "default": 0
+    },
+    "total_errors": {
+      "type": "number",
+      "default": 0
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sucesso",
+        "erro",
+        "parcial"
+      ],
+      "default": "sucesso"
+    },
+    "detalhes": {
+      "type": "string"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "marketplace",
+    "status"
+  ]
+}

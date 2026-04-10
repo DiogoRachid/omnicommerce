@@ -1,0 +1,33 @@
+{
+  "name": "MarketplaceFieldMapping",
+  "type": "object",
+  "properties": {
+    "marketplace": {
+      "type": "string",
+      "enum": [
+        "mercado_livre",
+        "bling",
+        "shopee",
+        "shopify",
+        "woocommerce"
+      ],
+      "description": "Marketplace de origem"
+    },
+    "marketplace_field": {
+      "type": "string",
+      "description": "Nome do campo no marketplace"
+    },
+    "system_field": {
+      "type": "string",
+      "description": "Nome do campo correspondente no sistema"
+    },
+    "company_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "marketplace",
+    "marketplace_field",
+    "system_field"
+  ]
+}

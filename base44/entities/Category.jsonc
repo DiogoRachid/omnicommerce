@@ -4,7 +4,7 @@
   "properties": {
     "slug": {
       "type": "string",
-      "description": "Identificador \u00fanico da categoria (ex: calcados_infantis, eletronicos_portateis)"
+      "description": "Identificador \u00fanico da categoria (ex: calcados_infantis)"
     },
     "nome": {
       "type": "string",
@@ -17,6 +17,14 @@
     "categoria_pai_slug": {
       "type": "string",
       "description": "Slug da categoria pai (para subcategorias)"
+    },
+    "marketplace_origin": {
+      "type": "string",
+      "description": "Marketplace de origem da categoria"
+    },
+    "marketplace_category_id": {
+      "type": "string",
+      "description": "ID da categoria no marketplace de origem"
     },
     "company_id": {
       "type": "string"
