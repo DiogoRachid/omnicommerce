@@ -12,7 +12,7 @@ const menuItems = [
   { icon: Building2, label: 'Empresas', path: '/empresas' },
   { icon: Package, label: 'Produtos', path: '/produtos' },
   { icon: Tag, label: 'Categorias', path: '/categorias' },
-  { icon: Map, label: 'Mapeamento ML', path: '/mapeamento-marketplaces' },
+  { icon: Map, label: 'Mapeamento Marketplaces', path: '/mapeamento-marketplaces' },
   { icon: Warehouse, label: 'Estoque', path: '/estoque' },
   { icon: ShoppingCart, label: 'Vendas', path: '/vendas' },
   { icon: FileText, label: 'Notas Fiscais', path: '/notas-fiscais' },

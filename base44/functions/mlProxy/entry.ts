@@ -396,6 +396,28 @@ Deno.serve(async (req) => {
       return Response.json(data);
     }
 
+    // ── listSampleProducts ─────────────────────────────────────────────────────
+    if (action === 'listSampleProducts') {
+      const token = await getStoredToken(base44);
+      if (!token) throw new Error('Mercado Livre não está conectado.');
+      const { appId, secretKey } = await getMlCredentials(base44);
+      const freshToken = await refreshTokenIfNeeded(base44, token, appId, secretKey);
+      const userId = freshToken.user_id || token.user_id;
+      const searchRes = await fetch(
+        `${ML_API}/users/${userId}/items/search?limit=1`,
+        { headers: { Authorization: `Bearer ${freshToken.access_token}`, Accept: 'application/json' } }
+      );
+      const searchData = await searchRes.json();
+      const ids = searchData?.results || [];
+      if (ids.length === 0) return Response.json({ items: [] });
+      const detailRes = await fetch(
+        `${ML_API}/items/${ids[0]}`,
+        { headers: { Authorization: `Bearer ${freshToken.access_token}`, Accept: 'application/json' } }
+      );
+      const item = await detailRes.json();
+      return Response.json({ items: [item] });
+    }
+
     return Response.json({ error: `Action desconhecida: ${action}` }, { status: 400 });
 
   } catch (error) {

@@ -48,29 +48,34 @@ const SYSTEM_FIELDS = [
   { value: '_ignorar', label: '— Ignorar campo —' },
 ];
 
+// ── Connection status check ───────────────────────────────────────────────────
+
+async function checkConnections() {
+  const [blingRes, mlRes] = await Promise.allSettled([
+    base44.functions.invoke('blingProxy', { action: 'status' }),
+    base44.functions.invoke('mlProxy', { action: 'status' }),
+  ]);
+  return {
+    bling: blingRes.status === 'fulfilled' ? blingRes.value?.data : { connected: false, error: blingRes.reason?.message },
+    ml: mlRes.status === 'fulfilled' ? mlRes.value?.data : { connected: false, error: mlRes.reason?.message },
+  };
+}
+
 // ── Helper to fetch sample fields from marketplace ────────────────────────────
 
-async function fetchMarketplaceFields(marketplace, companyId) {
+async function fetchMarketplaceFields(marketplace) {
   if (marketplace === 'bling') {
-    const res = await base44.functions.invoke('blingProxy', {
-      action: 'list_products',
-      company_id: companyId,
-      limit: 1,
-    });
-    const products = res?.data?.products || res?.data?.data || [];
+    const res = await base44.functions.invoke('blingProxy', { action: 'listProducts', pagina: 1, limite: 1 });
+    const products = res?.data?.data || [];
     if (products.length === 0) return [];
     return Object.keys(flattenObj(products[0]));
   }
 
   if (marketplace === 'mercado_livre') {
-    const res = await base44.functions.invoke('mlProxy', {
-      action: 'list_products',
-      company_id: companyId,
-      limit: 1,
-    });
-    const products = res?.data?.results || res?.data?.items || [];
-    if (products.length === 0) return [];
-    return Object.keys(flattenObj(products[0]));
+    const res = await base44.functions.invoke('mlProxy', { action: 'listSampleProducts' });
+    const items = res?.data?.items || [];
+    if (items.length === 0) return [];
+    return Object.keys(flattenObj(items[0]));
   }
 
   // Generic fallback — return common fields
@@ -268,6 +273,15 @@ export default function MarketplaceMapping() {
   const [showMappingModal, setShowMappingModal] = useState(false);
   const [marketplaceFields, setMarketplaceFields] = useState([]);
   const [activeTab, setActiveTab] = useState('importar');
+  const [connStatus, setConnStatus] = useState(null);
+  const [checkingConn, setCheckingConn] = useState(false);
+
+  const handleCheckConnections = async () => {
+    setCheckingConn(true);
+    const status = await checkConnections();
+    setConnStatus(status);
+    setCheckingConn(false);
+  };
 
   const { data: mappings = [], refetch: refetchMappings } = useQuery({
     queryKey: ['field_mappings', selectedCompany],
@@ -304,7 +318,7 @@ export default function MarketplaceMapping() {
     }
     setImporting(true);
     try {
-      const fields = await fetchMarketplaceFields(selectedMarketplace, selectedCompany);
+      const fields = await fetchMarketplaceFields(selectedMarketplace);
       if (fields.length === 0) {
         toast.warning('Nenhum campo encontrado. Verifique a conexão com o marketplace.');
         setImporting(false);
@@ -340,8 +354,28 @@ export default function MarketplaceMapping() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Map className="w-6 h-6" /> Mapeamento de Marketplaces</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">Importe produtos e configure o mapeamento de campos por marketplace.</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Map className="w-6 h-6" /> Mapeamento Marketplaces</h1>
+        <Button variant="outline" size="sm" onClick={handleCheckConnections} disabled={checkingConn} className="gap-2">
+          {checkingConn ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔌</span>}
+          Verificar Conexões
+        </Button>
+      </div>
+      {connStatus && (
+        <div className="flex flex-wrap gap-3">
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${connStatus.bling?.connected ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+            <span className={`w-2 h-2 rounded-full ${connStatus.bling?.connected ? 'bg-green-500' : 'bg-red-500'}`} />
+            Bling: {connStatus.bling?.connected ? (connStatus.bling?.expired ? '⚠ Token expirado' : '✓ Conectado') : '✗ Desconectado'}
+            {connStatus.bling?.error && <span className="text-xs opacity-70 ml-1">({connStatus.bling.error})</span>}
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${connStatus.ml?.connected ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+            <span className={`w-2 h-2 rounded-full ${connStatus.ml?.connected ? 'bg-green-500' : 'bg-red-500'}`} />
+            Mercado Livre: {connStatus.ml?.connected ? (connStatus.ml?.valid ? '✓ Conectado' : '⚠ Token inválido') : '✗ Desconectado'}
+            {connStatus.ml?.error && <span className="text-xs opacity-70 ml-1">({connStatus.ml.error})</span>}
+          </div>
+        </div>
+      )}
+        <p className="text-muted-foreground text-sm mt-0.5">Configure o mapeamento de campos entre os marketplaces e o sistema.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
