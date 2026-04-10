@@ -190,10 +190,11 @@ export default function InlineVariationsEditor({ tipo, onTipoChange, variationGr
 
 // Utilitário exportado para gerar as variações a partir dos grupos
 export function generateVariationsFromGroups(pai, variationGroups) {
+  const normalize = (str) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const combos = cartesian(variationGroups.filter(g => g.nome.trim() && g.values.some(v => v.trim())));
-  return combos.map(combo => ({
+  return combos.map((combo, idx) => ({
     nome: `${pai.nome} - ${buildVariationName(combo)}`,
-    sku: `${pai.sku}-${combo.map(c => c.valor.replace(/\s+/g, '').substring(0, 4).toUpperCase()).join('-')}`,
+    sku: `${pai.sku}-${combo.map(c => normalize(c.valor).substring(0, 4)).join('-')}`.substring(0, 18),
     tipo: 'variacao',
     variacoes_atributos: buildAtributosStr(combo),
     atributos_extras: Object.fromEntries(combo.map(c => [c.nome, c.valor])),

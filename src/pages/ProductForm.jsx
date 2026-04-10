@@ -130,9 +130,27 @@ export default function ProductForm() {
   };
 
   const generateSKU = () => {
-    const prefix = form.nome?.substring(0, 4).toUpperCase().replace(/\s/g, '') || 'PROD';
-    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
-    updateField('sku', `${prefix}-${random}`);
+    // Padrão: [MARCA(3)][TIPO(4)][TAM(2)][COR(3)][SEQ(3)] — máx 18 chars, sem localização
+    const normalize = (str) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    const marca = normalize(form.marca).substring(0, 3).padEnd(3, 'X');
+
+    // Tipo: primeiras 4 letras significativas do nome
+    const nomeWords = (form.nome || 'PROD').split(/\s+/).filter(w => w.length > 2);
+    const tipo = normalize(nomeWords[0] || form.nome || 'PROD').substring(0, 4).padEnd(4, 'X');
+
+    // Tamanho: do atributo_extras ou XX
+    const tamRaw = form.atributos_extras?.Tamanho || form.atributos_extras?.tamanho || form.atributos_extras?.Tam || '';
+    const tam = normalize(tamRaw).substring(0, 2).padEnd(2, 'X');
+
+    // Cor: do atributo_extras ou XXX
+    const corRaw = form.atributos_extras?.Cor || form.atributos_extras?.cor || form.atributos_extras?.Color || '';
+    const cor = normalize(corRaw).substring(0, 3).padEnd(3, 'X');
+
+    // Sequencial: número aleatório de 3 dígitos
+    const seq = String(Math.floor(Math.random() * 900) + 100);
+
+    updateField('sku', `${marca}${tipo}${tam}${cor}${seq}`);
   };
 
   const addAtributo = () => {
