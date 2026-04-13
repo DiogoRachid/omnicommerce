@@ -439,7 +439,21 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
       try {
         const p = await base44.entities.Product.create(product);
         skuToId[product.sku] = p.id;
-        created.push({ id: p.id, paiSku });
+        created.push({ id: p.id, paiSku, product });
+
+        // Create initial stock movement if estoque_atual > 0
+        if (product.estoque_atual > 0) {
+          await base44.entities.StockMovement.create({
+            product_id: p.id,
+            product_name: product.nome,
+            tipo: 'entrada',
+            quantidade: product.estoque_atual,
+            custo_unitario: product.preco_custo || 0,
+            referencia_tipo: 'ajuste_manual',
+            observacao: 'Estoque inicial via importação CSV',
+            company_id: product.company_id,
+          });
+        }
       } catch (e) {
         errList.push({ row: i + 2, msg: e.message });
         created.push(null);
