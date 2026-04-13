@@ -461,16 +461,36 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
       setProgress(Math.round(((i + 1) / rows.length) * 100 * 0.8));
     }
 
-    // Second pass: link children to parents + mark parents as 'pai'
+    // Second pass: link children to parents + create parent if not in batch
     const toLink = created.filter(c => c && c.paiSku);
     const updatedPais = new Set();
     for (let i = 0; i < toLink.length; i++) {
-      const { id, paiSku } = toLink[i];
-      const paiId = skuToId[paiSku];
+      const { id, paiSku, product } = toLink[i];
+      let paiId = skuToId[paiSku];
+
+      // Parent not in batch — create it now
+      if (!paiId && !updatedPais.has(paiSku)) {
+        try {
+          const paiData = {
+            sku: paiSku,
+            nome: product.nome,
+            marca: product.marca,
+            categoria: product.categoria,
+            tipo: 'pai',
+            origem: 'importacao',
+            ativo: true,
+          };
+          if (companyId) paiData.company_id = companyId;
+          const paiCreated = await base44.entities.Product.create(paiData);
+          paiId = paiCreated.id;
+          skuToId[paiSku] = paiId;
+        } catch (e) { /* silent */ }
+      }
+
       if (paiId) {
         try {
           await base44.entities.Product.update(id, { produto_pai_id: paiId });
-          // Upgrade parent to tipo 'pai' if not done yet
+          // Upgrade existing parent to tipo 'pai' if not done yet
           if (!updatedPais.has(paiId)) {
             await base44.entities.Product.update(paiId, { tipo: 'pai' });
             updatedPais.add(paiId);
