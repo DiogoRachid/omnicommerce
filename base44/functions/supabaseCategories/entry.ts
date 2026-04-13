@@ -3,6 +3,21 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
 const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_KEY');
 
+function parseOpcoes(valores) {
+  if (!valores) return [];
+  if (Array.isArray(valores)) return valores.map(String);
+  if (typeof valores === 'string') return valores.split(',').map(v => v.trim()).filter(Boolean);
+  return [];
+}
+
+function detectTipo(a) {
+  const opcoes = parseOpcoes(a.valores_possiveis);
+  if (opcoes.length > 0) return 'lista';
+  const nome = (a.nome_atributo || '').toLowerCase();
+  if (['largura', 'altura', 'peso', 'comprimento', 'voltagem', 'wattagem', 'potencia'].some(k => nome.includes(k))) return 'number';
+  return 'texto';
+}
+
 async function supabaseFetch(path) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     headers: {
@@ -111,10 +126,27 @@ Deno.serve(async (req) => {
           : [],
       }));
 
+      // Map attributes to ML marketplace fields
+      const mlFields = (atributos || []).map(a => ({
+        id: String(a.id),
+        nome: a.nome_atributo,
+        tipo: detectTipo(a),
+        obrigatorio: !!a.obrigatorio,
+        opcoes: parseOpcoes(a.valores_possiveis),
+        hint: '',
+      }));
+
       catRecord = await base44.asServiceRole.entities.ProductCategory.create({
         nome: categoria.nome,
         descricao: `Categoria importada do banco global`,
+        ml_category_id: String(categoria.id),
         variacoes_padrao: variacoesPadrao,
+        campos_marketplace: {
+          mercado_livre: mlFields,
+          shopee: [],
+          amazon: [],
+          magalu: [],
+        },
         ativo: true,
       });
     }
