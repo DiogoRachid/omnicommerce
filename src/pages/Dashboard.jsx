@@ -53,7 +53,12 @@ export default function Dashboard() {
   const confirmedSales = sales.filter(s => s.status === 'confirmada');
   const totalRevenue = confirmedSales.reduce((sum, s) => sum + (s.total || 0), 0);
   const avgTicket = confirmedSales.length > 0 ? totalRevenue / confirmedSales.length : 0;
-  const lowStock = products.filter(p => p.ativo && p.estoque_atual <= p.estoque_minimo);
+  const lowStock = products.filter(p =>
+    p.ativo &&
+    p.tipo !== 'pai' &&
+    (p.estoque_minimo || 0) > 0 &&
+    (p.estoque_atual || 0) <= (p.estoque_minimo || 0)
+  );
 
   const salesByChannel = Object.entries(
     confirmedSales.reduce((acc, s) => {
