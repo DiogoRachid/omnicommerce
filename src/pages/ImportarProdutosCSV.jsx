@@ -282,6 +282,18 @@ function Step3({ headers, rows, category, onNext, onBack }) {
       { value: 'sku', label: 'SKU / Código' },
       { value: 'nome', label: 'Nome / Descrição' },
       { value: '_pai_sku', label: 'SKU do Produto Pai' },
+      { value: 'ean', label: 'EAN / GTIN' },
+      { value: 'marca', label: 'Marca' },
+      { value: 'ncm', label: 'NCM' },
+      { value: 'unidade_medida', label: 'Unidade de Medida' },
+      { value: 'preco_venda', label: 'Preço de Venda' },
+      { value: 'preco_custo', label: 'Preço de Custo' },
+      { value: 'estoque_atual', label: 'Estoque Atual' },
+      { value: 'peso_liquido_kg', label: 'Peso Líquido (kg)' },
+      { value: 'peso_bruto_kg', label: 'Peso Bruto (kg)' },
+      { value: 'largura_cm', label: 'Largura (cm)' },
+      { value: 'altura_cm', label: 'Altura (cm)' },
+      { value: 'comprimento_cm', label: 'Comprimento (cm)' },
     ];
     if (category?.variacoes_padrao?.length > 0) {
       category.variacoes_padrao.forEach(v => {
