@@ -281,6 +281,7 @@ function Step3({ headers, rows, category, onNext, onBack }) {
       { value: '_ignorar', label: '— Ignorar —' },
       { value: 'sku', label: 'SKU / Código' },
       { value: 'nome', label: 'Nome / Descrição' },
+      { value: '_pai_sku', label: 'SKU do Produto Pai' },
     ];
     if (category?.variacoes_padrao?.length > 0) {
       category.variacoes_padrao.forEach(v => {
@@ -382,6 +383,9 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
   const [errors, setErrors] = useState([]);
   const [done, setDone] = useState(false);
 
+  // First pass: create all products, return map of sku→id
+  // Second pass: link children to parents
+
   const transformRow = (row, idx) => {
     const product = { tipo: 'simples', origem: 'importacao', ativo: true };
     if (companyId) product.company_id = companyId;
@@ -414,22 +418,48 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
   const handleImport = async () => {
     setImporting(true);
     const errList = [];
+    const skuToId = {}; // map sku → created product id
+    const paiSkuField = Object.entries(mapping).find(([, v]) => v === '_pai_sku')?.[0];
+
+    // First pass: create all products (without pai linkage)
+    const created = []; // { row, idx, paiSku }
     for (let i = 0; i < rows.length; i++) {
       const product = transformRow(rows[i], i);
+      const paiSku = paiSkuField ? (rows[i][paiSkuField] || '').trim() : '';
       if (!product.nome && !product.sku) {
         errList.push({ row: i + 2, msg: 'Sem nome ou SKU' });
+        created.push(null);
         continue;
       }
       if (!product.sku && product.nome) {
         product.sku = product.nome.substring(0, 20).replace(/\s+/g, '_').toUpperCase() + '_' + (i + 1);
       }
+      // If has pai, mark as variação; else pai
+      if (paiSku) product.tipo = 'variacao';
       try {
-        await base44.entities.Product.create(product);
+        const p = await base44.entities.Product.create(product);
+        skuToId[product.sku] = p.id;
+        created.push({ id: p.id, paiSku });
       } catch (e) {
         errList.push({ row: i + 2, msg: e.message });
+        created.push(null);
       }
-      setProgress(Math.round(((i + 1) / rows.length) * 100));
+      setProgress(Math.round(((i + 1) / rows.length) * 100 * 0.8));
     }
+
+    // Second pass: link children to parents
+    const toLink = created.filter(c => c && c.paiSku);
+    for (let i = 0; i < toLink.length; i++) {
+      const { id, paiSku } = toLink[i];
+      const paiId = skuToId[paiSku];
+      if (paiId) {
+        try {
+          await base44.entities.Product.update(id, { produto_pai_id: paiId });
+        } catch (e) { /* silent */ }
+      }
+      setProgress(80 + Math.round(((i + 1) / Math.max(toLink.length, 1)) * 20));
+    }
+
     setErrors(errList);
     setImporting(false);
     setDone(true);
