@@ -275,11 +275,14 @@ function Step2({ rows, onNext, onBack }) {
 
 // ── Step 3: Map Columns ───────────────────────────────────────────────────────
 function Step3({ headers, rows, category, onNext, onBack }) {
-  // Build system fields: base + category attributes as atributos_extras.{nome}
-  const systemFields = React.useMemo(() => {
-    const fields = [...BASE_SYSTEM_FIELDS];
+  // Build system fields: only category attributes (+ a few essential base fields)
+  const systemFields = useMemo(() => {
+    const fields = [
+      { value: '_ignorar', label: '— Ignorar —' },
+      { value: 'sku', label: 'SKU / Código' },
+      { value: 'nome', label: 'Nome / Descrição' },
+    ];
     if (category?.variacoes_padrao?.length > 0) {
-      fields.push({ value: '_sep_cat', label: `── Atributos: ${category.nome} ──`, disabled: true });
       category.variacoes_padrao.forEach(v => {
         fields.push({
           value: `atributos_extras.${v.nome}`,
