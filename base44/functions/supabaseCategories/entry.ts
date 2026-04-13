@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     if (existing && existing.length > 0) {
       catRecord = existing[0];
     } else {
-      const variacoesPadrao = (atributos || []).slice(0, 50).map(a => ({
+      const variacoesPadrao = (atributos || []).map(a => ({
         nome: a.nome_atributo,
         tipo: 'texto',
         obrigatorio: !!a.obrigatorio,
