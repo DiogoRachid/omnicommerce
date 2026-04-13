@@ -91,7 +91,16 @@ export default function Stock() {
     return map;
   }, [products]);
 
-  const rootProducts = products.filter(p => p.tipo !== 'variacao');
+  // rootProducts = non-variacao + orphaned variations (whose parent no longer exists)
+  const productIds = new Set(products.map(p => p.id));
+  const orphanedVariacoes = products.filter(
+    p => p.tipo === 'variacao' && (!p.produto_pai_id || !productIds.has(p.produto_pai_id))
+  );
+  const rootProducts = [
+    ...products.filter(p => p.tipo !== 'variacao'),
+    ...orphanedVariacoes,
+  ];
+
   const filtered = rootProducts.filter(p =>
     p.nome?.toLowerCase().includes(search.toLowerCase()) ||
     p.sku?.toLowerCase().includes(search.toLowerCase())
@@ -99,10 +108,11 @@ export default function Stock() {
 
   const toggleExpand = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
 
-  // Totals
-  const totalProdutos = rootProducts.filter(p => p.tipo !== 'pai').length +
-    products.filter(p => p.tipo === 'variacao').length;
-  const totalBaixo = products.filter(p => p.tipo !== 'pai' && (p.estoque_atual || 0) <= (p.estoque_minimo || 0)).length;
+  // Totals — based only on what's visible in the table (non-pai root + linked variations)
+  const linkedVariacoes = products.filter(p => p.tipo === 'variacao' && p.produto_pai_id && productIds.has(p.produto_pai_id));
+  const totalProdutos = rootProducts.filter(p => p.tipo !== 'pai').length + linkedVariacoes.length;
+  const totalBaixo = [...rootProducts.filter(p => p.tipo !== 'pai'), ...linkedVariacoes]
+    .filter(p => (p.estoque_atual || 0) <= (p.estoque_minimo || 0)).length;
 
   const StockRow = ({ p, isVariacao = false, indent = 0 }) => {
     const isLow = p.tipo !== 'pai' && (p.estoque_atual || 0) <= (p.estoque_minimo || 0);
