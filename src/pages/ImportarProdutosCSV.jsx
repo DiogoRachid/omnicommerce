@@ -394,7 +394,7 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
     const numFields = ['preco_venda', 'preco_custo', 'margem_padrao', 'estoque_atual', 'estoque_minimo', 'estoque_maximo', 'peso_liquido_kg', 'peso_bruto_kg', 'largura_cm', 'altura_cm', 'comprimento_cm'];
 
     Object.entries(mapping).forEach(([col, field]) => {
-      if (field === '_ignorar' || field === '_sep_cat') return;
+      if (field === '_ignorar' || field === '_sep_cat' || field === '_pai_sku') return;
       let val = row[col] || '';
       if (!val) return;
 
@@ -408,6 +408,11 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
         product[field] = val;
       }
     });
+
+    // Auto-build variacoes_atributos from atributos_extras values (e.g. "Azul | 39")
+    if (product.atributos_extras && Object.keys(product.atributos_extras).length > 0) {
+      product.variacoes_atributos = Object.values(product.atributos_extras).join(' | ');
+    }
 
     return product;
   };
