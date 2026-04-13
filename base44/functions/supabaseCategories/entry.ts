@@ -143,9 +143,9 @@ Deno.serve(async (req) => {
         variacoes_padrao: variacoesPadrao,
         campos_marketplace: {
           mercado_livre: mlFields,
-          shopee: [],
-          amazon: [],
-          magalu: [],
+          shopee: mlFields,
+          amazon: mlFields,
+          magalu: mlFields,
         },
         ativo: true,
       });
