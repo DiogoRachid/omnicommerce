@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Warehouse, ShoppingCart, Receipt,
   FileText, Users, BarChart3, Store, Settings, Building2,
-  ChevronLeft, ChevronRight, Bot, Wand2, RefreshCw, Tag, Map, FolderDown
+  ChevronLeft, ChevronRight, Bot, Wand2, RefreshCw, Tag, Map, FolderDown, FileSpreadsheet
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -13,6 +13,7 @@ const menuItems = [
   { icon: Package, label: 'Produtos', path: '/produtos' },
   { icon: Tag, label: 'Categorias', path: '/categorias' },
   { icon: FolderDown, label: 'Importar Categorias', path: '/importar-categorias' },
+  { icon: FileSpreadsheet, label: 'Importar Produtos CSV', path: '/importar-produtos-csv' },
   { icon: Map, label: 'Mapeamento Marketplaces', path: '/mapeamento-marketplaces' },
   { icon: Warehouse, label: 'Estoque', path: '/estoque' },
   { icon: ShoppingCart, label: 'Vendas', path: '/vendas' },

@@ -31,6 +31,7 @@ import MarketplaceFields from '@/pages/MarketplaceFields';
 import Categories from '@/pages/Categories';
 import MarketplaceMapping from '@/pages/MarketplaceMapping';
 import ImportarCategorias from '@/pages/ImportarCategorias';
+import ImportarProdutosCSV from '@/pages/ImportarProdutosCSV';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -78,6 +79,7 @@ const AuthenticatedApp = () => {
         <Route path="/categorias" element={<Categories />} />
         <Route path="/mapeamento-marketplaces" element={<MarketplaceMapping />} />
         <Route path="/importar-categorias" element={<ImportarCategorias />} />
+        <Route path="/importar-produtos-csv" element={<ImportarProdutosCSV />} />
       </Route>
       <Route path="/bling-callback" element={<BlingCallback />} />
       <Route path="/ml-callback" element={<MlCallback />} />
