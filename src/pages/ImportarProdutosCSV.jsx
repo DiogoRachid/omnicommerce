@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
@@ -6,17 +6,16 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Upload, FileSpreadsheet, ChevronRight, CheckCircle2, Loader2, AlertCircle, X, ClipboardPaste } from 'lucide-react';
+import { Upload, FileSpreadsheet, ChevronRight, CheckCircle2, Loader2, AlertCircle, ClipboardPaste, Tag } from 'lucide-react';
 
-// ── System fields available for mapping ──────────────────────────────────────
-const SYSTEM_FIELDS = [
+// ── Base system fields (always available) ────────────────────────────────────
+const BASE_SYSTEM_FIELDS = [
   { value: '_ignorar', label: '— Ignorar —' },
   { value: 'sku', label: 'SKU / Código' },
   { value: 'nome', label: 'Nome / Descrição' },
   { value: 'descricao', label: 'Descrição Detalhada' },
   { value: 'ean', label: 'EAN / GTIN' },
   { value: 'marca', label: 'Marca' },
-  { value: 'categoria', label: 'Categoria' },
   { value: 'ncm', label: 'NCM' },
   { value: 'cest', label: 'CEST' },
   { value: 'unidade_medida', label: 'Unidade de Medida' },
@@ -31,22 +30,19 @@ const SYSTEM_FIELDS = [
   { value: 'largura_cm', label: 'Largura (cm)' },
   { value: 'altura_cm', label: 'Altura (cm)' },
   { value: 'comprimento_cm', label: 'Comprimento/Profundidade (cm)' },
-  { value: 'variacoes_atributos', label: 'Variações / Atributos' },
 ];
 
-// Auto-detect column → field based on common names
+// Auto-detect mapping from CSV column name
 const AUTO_MAP = {
-  'código': 'sku', 'codigo': 'sku', 'sku': 'sku', 'cod': 'sku', 'código pai': '_ignorar',
+  'código': 'sku', 'codigo': 'sku', 'sku': 'sku', 'cód': 'sku',
   'descrição': 'nome', 'descricao': 'nome', 'nome': 'nome', 'produto': 'nome',
-  'descrição complementar': 'descricao', 'descrição do produto no fornecedor': 'descricao', 'descrição curta': 'descricao',
+  'descrição complementar': 'descricao', 'descrição curta': 'descricao',
   'gtin/ean': 'ean', 'ean': 'ean', 'gtin': 'ean',
   'marca': 'marca',
-  'categoria do produto': 'categoria', 'categoria': 'categoria', 'grupo de produtos': 'categoria',
-  'ncm': 'ncm',
-  'cest': 'cest',
+  'ncm': 'ncm', 'cest': 'cest',
   'unidade': 'unidade_medida', 'unidade de medida': 'unidade_medida',
-  'preço': 'preco_venda', 'preco': 'preco_venda', 'preço de venda': 'preco_venda',
-  'preço de custo': 'preco_custo', 'preco de custo': 'preco_custo', 'preço de compra': 'preco_custo',
+  'preço': 'preco_venda', 'preço de venda': 'preco_venda',
+  'preço de custo': 'preco_custo', 'preço de compra': 'preco_custo',
   'estoque': 'estoque_atual',
   'estoque minimo': 'estoque_minimo', 'estoque mínimo': 'estoque_minimo',
   'estoque maximo': 'estoque_maximo', 'estoque máximo': 'estoque_maximo',
@@ -54,16 +50,13 @@ const AUTO_MAP = {
   'peso bruto (kg)': 'peso_bruto_kg', 'peso bruto': 'peso_bruto_kg',
   'largura do produto': 'largura_cm', 'largura': 'largura_cm',
   'altura do produto': 'altura_cm', 'altura': 'altura_cm',
-  'profundidade do produto': 'comprimento_cm', 'profundidade': 'comprimento_cm', 'comprimento': 'comprimento_cm',
-  'produto variação': 'variacoes_atributos',
+  'profundidade do produto': 'comprimento_cm', 'comprimento': 'comprimento_cm',
 };
 
-// ── CSV parser ───────────────────────────────────────────────────────────────
+// ── CSV parser ────────────────────────────────────────────────────────────────
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return { headers: [], rows: [] };
-
-  // Detect delimiter: comma or semicolon or tab
   const firstLine = lines[0];
   const delimiter = firstLine.includes('\t') ? '\t' : firstLine.includes(';') ? ';' : ',';
 
@@ -73,14 +66,9 @@ function parseCSV(text) {
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === delimiter && !inQuotes) {
-        result.push(cur.trim());
-        cur = '';
-      } else {
-        cur += ch;
-      }
+      if (ch === '"') { inQuotes = !inQuotes; }
+      else if (ch === delimiter && !inQuotes) { result.push(cur.trim()); cur = ''; }
+      else { cur += ch; }
     }
     result.push(cur.trim());
     return result;
@@ -93,15 +81,14 @@ function parseCSV(text) {
     headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
     return obj;
   });
-
   return { headers, rows };
 }
 
-// ── Step indicator ────────────────────────────────────────────────────────────
+// ── Step Indicator ────────────────────────────────────────────────────────────
 function Steps({ current }) {
-  const steps = ['Carregar Arquivo', 'Mapear Colunas', 'Importar'];
+  const steps = ['Carregar Arquivo', 'Selecionar Categoria', 'Mapear Colunas', 'Importar'];
   return (
-    <div className="flex items-center gap-2 mb-6">
+    <div className="flex items-center gap-2 mb-6 flex-wrap">
       {steps.map((s, i) => (
         <React.Fragment key={i}>
           <div className={`flex items-center gap-2 text-sm font-medium ${i <= current ? 'text-primary' : 'text-muted-foreground'}`}>
@@ -128,7 +115,7 @@ function Step1({ onNext }) {
   const processText = (text) => {
     const { headers, rows } = parseCSV(text);
     if (headers.length === 0) { toast.error('Arquivo inválido ou vazio.'); return; }
-    onNext(headers, rows, text);
+    onNext(headers, rows);
   };
 
   const handleFile = (file) => {
@@ -141,8 +128,7 @@ function Step1({ onNext }) {
   const handleDrop = useCallback((e) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    handleFile(file);
+    handleFile(e.dataTransfer.files[0]);
   }, []);
 
   return (
@@ -154,7 +140,6 @@ function Step1({ onNext }) {
         <p className="text-sm text-muted-foreground">Faça upload do arquivo CSV ou cole os dados da planilha diretamente.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Toggle */}
         <div className="flex gap-2">
           <Button size="sm" variant={!pasteMode ? 'default' : 'outline'} onClick={() => setPasteMode(false)} className="gap-2">
             <Upload className="w-3.5 h-3.5" /> Upload de arquivo
@@ -197,13 +182,127 @@ function Step1({ onNext }) {
   );
 }
 
-// ── Step 2: Map Columns ───────────────────────────────────────────────────────
-function Step2({ headers, rows, onNext, onBack }) {
+// ── Step 2: Select Category ───────────────────────────────────────────────────
+function Step2({ rows, onNext, onBack }) {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState('');
+
+  useEffect(() => {
+    base44.entities.ProductCategory.list('-created_date', 200).then(data => {
+      setCategories(data || []);
+      setLoading(false);
+    });
+  }, []);
+
+  const selected = categories.find(c => c.id === selectedId);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Tag className="w-4 h-4" /> Selecionar Categoria dos Produtos
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Escolha a categoria para estes produtos. Os campos/atributos da categoria serão usados como opções de mapeamento na próxima etapa.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg p-3">
+          <strong>{rows.length} linhas</strong> detectadas no arquivo.
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : categories.length === 0 ? (
+          <div className="text-sm text-muted-foreground bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-800">Nenhuma categoria encontrada</p>
+              <p className="text-amber-700 mt-0.5">Importe categorias primeiro em <strong>Importar Categorias</strong>, ou pule esta etapa para usar apenas os campos padrão.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <Select value={selectedId} onValueChange={setSelectedId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma categoria..." />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.icone ? `${c.icone} ` : ''}{c.nome}
+                    {c.variacoes_padrao?.length > 0 && (
+                      <span className="ml-2 text-xs text-muted-foreground">({c.variacoes_padrao.length} atributos)</span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selected && selected.variacoes_padrao?.length > 0 && (
+              <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-semibold text-primary">Atributos disponíveis desta categoria:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.variacoes_padrao.map((v, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs gap-1">
+                      {v.nome}
+                      {v.obrigatorio && <span className="text-destructive">*</span>}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Estes atributos estarão disponíveis como opções de mapeamento na próxima etapa.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-between pt-2 border-t">
+          <Button variant="outline" onClick={onBack}>Voltar</Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => onNext(null)}>
+              Pular <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+            <Button onClick={() => onNext(selected || null)} disabled={categories.length > 0 && !selectedId}>
+              Continuar <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Step 3: Map Columns ───────────────────────────────────────────────────────
+function Step3({ headers, rows, category, onNext, onBack }) {
+  // Build system fields: base + category attributes as atributos_extras.{nome}
+  const systemFields = React.useMemo(() => {
+    const fields = [...BASE_SYSTEM_FIELDS];
+    if (category?.variacoes_padrao?.length > 0) {
+      fields.push({ value: '_sep_cat', label: `── Atributos: ${category.nome} ──`, disabled: true });
+      category.variacoes_padrao.forEach(v => {
+        fields.push({
+          value: `atributos_extras.${v.nome}`,
+          label: `${v.nome}${v.obrigatorio ? ' *' : ''}`,
+          category: true,
+        });
+      });
+    }
+    return fields;
+  }, [category]);
+
   const [mapping, setMapping] = useState(() => {
     const m = {};
     headers.forEach(h => {
       const key = h.toLowerCase().trim();
-      m[h] = AUTO_MAP[key] || '_ignorar';
+      // Try base auto-map first
+      if (AUTO_MAP[key]) { m[h] = AUTO_MAP[key]; return; }
+      // Try matching category attribute names
+      if (category?.variacoes_padrao) {
+        const match = category.variacoes_padrao.find(v => v.nome.toLowerCase() === key);
+        if (match) { m[h] = `atributos_extras.${match.nome}`; return; }
+      }
+      m[h] = '_ignorar';
     });
     return m;
   });
@@ -216,17 +315,18 @@ function Step2({ headers, rows, onNext, onBack }) {
       <CardHeader>
         <CardTitle className="text-base">Mapear Colunas</CardTitle>
         <p className="text-sm text-muted-foreground">
-          {headers.length} colunas detectadas · {rows.length} linhas · Mapeie cada coluna ao campo correspondente no sistema.
+          {headers.length} colunas · {rows.length} linhas
+          {category && <> · Categoria: <strong>{category.nome}</strong></>}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="rounded-lg border overflow-hidden">
+        <div className="rounded-lg border overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted">
                 <th className="border border-border px-3 py-2 text-left font-semibold text-muted-foreground w-1/3">Coluna no arquivo</th>
                 <th className="border border-border px-3 py-2 text-left font-semibold text-muted-foreground w-1/3">Campo no sistema</th>
-                <th className="border border-border px-3 py-2 text-left font-semibold text-muted-foreground">Prévia (3 linhas)</th>
+                <th className="border border-border px-3 py-2 text-left font-semibold text-muted-foreground">Prévia</th>
               </tr>
             </thead>
             <tbody className="bg-card">
@@ -239,17 +339,17 @@ function Step2({ headers, rows, onNext, onBack }) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {SYSTEM_FIELDS.map(sf => (
-                          <SelectItem key={sf.value} value={sf.value} className="text-xs">{sf.label}</SelectItem>
+                        {systemFields.map(sf => (
+                          <SelectItem key={sf.value} value={sf.value} disabled={sf.disabled} className={`text-xs ${sf.category ? 'text-primary font-medium' : ''}`}>
+                            {sf.label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </td>
                   <td className="border border-border px-3 py-1.5 text-muted-foreground">
                     {preview.map((r, i) => (
-                      <span key={i} className="inline-block mr-2 text-[10px] bg-muted px-1 rounded">
-                        {r[h] || '—'}
-                      </span>
+                      <span key={i} className="inline-block mr-1.5 text-[10px] bg-muted px-1 rounded">{r[h] || '—'}</span>
                     ))}
                   </td>
                 </tr>
@@ -272,45 +372,51 @@ function Step2({ headers, rows, onNext, onBack }) {
   );
 }
 
-// ── Step 3: Preview & Import ──────────────────────────────────────────────────
-function Step3({ rows, mapping, onBack, companyId }) {
+// ── Step 4: Preview & Import ──────────────────────────────────────────────────
+function Step4({ rows, mapping, category, onBack, companyId }) {
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [errors, setErrors] = useState([]);
   const [done, setDone] = useState(false);
 
-  // Transform a row using the mapping
-  const transformRow = (row) => {
+  const transformRow = (row, idx) => {
     const product = { tipo: 'simples', origem: 'importacao', ativo: true };
     if (companyId) product.company_id = companyId;
+    if (category) product.categoria = category.nome;
+
+    const numFields = ['preco_venda', 'preco_custo', 'margem_padrao', 'estoque_atual', 'estoque_minimo', 'estoque_maximo', 'peso_liquido_kg', 'peso_bruto_kg', 'largura_cm', 'altura_cm', 'comprimento_cm'];
 
     Object.entries(mapping).forEach(([col, field]) => {
-      if (field === '_ignorar') return;
+      if (field === '_ignorar' || field === '_sep_cat') return;
       let val = row[col] || '';
-      // Normalize numeric fields
-      const numFields = ['preco_venda', 'preco_custo', 'margem_padrao', 'estoque_atual', 'estoque_minimo', 'estoque_maximo', 'peso_liquido_kg', 'peso_bruto_kg', 'largura_cm', 'altura_cm', 'comprimento_cm'];
-      if (numFields.includes(field)) {
-        val = parseFloat(val.replace(',', '.')) || 0;
+      if (!val) return;
+
+      if (field.startsWith('atributos_extras.')) {
+        const attrKey = field.replace('atributos_extras.', '');
+        if (!product.atributos_extras) product.atributos_extras = {};
+        product.atributos_extras[attrKey] = val;
+      } else if (numFields.includes(field)) {
+        product[field] = parseFloat(val.replace(',', '.')) || 0;
+      } else {
+        product[field] = val;
       }
-      if (val !== '' && val !== undefined) product[field] = val;
     });
 
     return product;
   };
 
-  const previewData = rows.slice(0, 5).map(transformRow);
+  const previewData = rows.slice(0, 5).map((r, i) => transformRow(r, i));
+  const mappedFields = Object.entries(mapping).filter(([, v]) => v !== '_ignorar' && v !== '_sep_cat');
 
   const handleImport = async () => {
     setImporting(true);
-    setErrors([]);
-    let errList = [];
+    const errList = [];
     for (let i = 0; i < rows.length; i++) {
-      const product = transformRow(rows[i]);
+      const product = transformRow(rows[i], i);
       if (!product.nome && !product.sku) {
         errList.push({ row: i + 2, msg: 'Sem nome ou SKU' });
         continue;
       }
-      // If no SKU, generate from nome
       if (!product.sku && product.nome) {
         product.sku = product.nome.substring(0, 20).replace(/\s+/g, '_').toUpperCase() + '_' + (i + 1);
       }
@@ -325,7 +431,7 @@ function Step3({ rows, mapping, onBack, companyId }) {
     setImporting(false);
     setDone(true);
     const ok = rows.length - errList.length;
-    toast.success(`${ok} produtos importados com sucesso!${errList.length > 0 ? ` (${errList.length} erros)` : ''}`);
+    toast.success(`${ok} produtos importados!${errList.length > 0 ? ` (${errList.length} erros)` : ''}`);
   };
 
   if (done) {
@@ -338,9 +444,7 @@ function Step3({ rows, mapping, onBack, companyId }) {
           {errors.length > 0 && (
             <div className="text-left max-w-md mx-auto bg-destructive/10 border border-destructive/20 rounded-lg p-3 space-y-1">
               <p className="text-xs font-semibold text-destructive flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> {errors.length} erros:</p>
-              {errors.map((e, i) => (
-                <p key={i} className="text-xs text-muted-foreground">Linha {e.row}: {e.msg}</p>
-              ))}
+              {errors.map((e, i) => <p key={i} className="text-xs text-muted-foreground">Linha {e.row}: {e.msg}</p>)}
             </div>
           )}
           <Button onClick={() => window.location.href = '/produtos'}>Ver Produtos</Button>
@@ -353,16 +457,20 @@ function Step3({ rows, mapping, onBack, companyId }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Prévia e Importação</CardTitle>
-        <p className="text-sm text-muted-foreground">{rows.length} produtos serão importados. Veja uma prévia abaixo.</p>
+        <p className="text-sm text-muted-foreground">
+          {rows.length} produtos · categoria: <strong>{category?.nome || 'Não definida'}</strong>
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-lg border overflow-x-auto">
           <table className="w-full text-xs border-collapse min-w-[500px]">
             <thead>
               <tr className="bg-muted">
-                {Object.entries(mapping).filter(([, v]) => v !== '_ignorar').map(([col]) => (
+                {mappedFields.map(([col, field]) => (
                   <th key={col} className="border border-border px-3 py-2 text-left font-semibold text-muted-foreground whitespace-nowrap">
-                    {SYSTEM_FIELDS.find(sf => sf.value === mapping[col])?.label || col}
+                    {field.startsWith('atributos_extras.')
+                      ? field.replace('atributos_extras.', '')
+                      : BASE_SYSTEM_FIELDS.find(sf => sf.value === field)?.label || col}
                   </th>
                 ))}
               </tr>
@@ -370,19 +478,25 @@ function Step3({ rows, mapping, onBack, companyId }) {
             <tbody className="bg-card">
               {previewData.map((p, i) => (
                 <tr key={i} className="hover:bg-accent/20">
-                  {Object.entries(mapping).filter(([, v]) => v !== '_ignorar').map(([col]) => (
-                    <td key={col} className="border border-border px-3 py-1.5 max-w-[150px] truncate">
-                      {String(p[mapping[col]] ?? '—')}
-                    </td>
-                  ))}
+                  {mappedFields.map(([col, field]) => {
+                    let val;
+                    if (field.startsWith('atributos_extras.')) {
+                      val = p.atributos_extras?.[field.replace('atributos_extras.', '')];
+                    } else {
+                      val = p[field];
+                    }
+                    return (
+                      <td key={col} className="border border-border px-3 py-1.5 max-w-[150px] truncate">
+                        {String(val ?? '—')}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {rows.length > 5 && (
-          <p className="text-xs text-muted-foreground">...e mais {rows.length - 5} linhas.</p>
-        )}
+        {rows.length > 5 && <p className="text-xs text-muted-foreground">...e mais {rows.length - 5} linhas.</p>}
 
         {importing && (
           <div className="space-y-1">
@@ -413,6 +527,7 @@ export default function ImportarProdutosCSV() {
   const [step, setStep] = useState(0);
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
+  const [category, setCategory] = useState(null);
   const [mapping, setMapping] = useState({});
 
   return (
@@ -433,17 +548,26 @@ export default function ImportarProdutosCSV() {
       )}
       {step === 1 && (
         <Step2
-          headers={headers}
           rows={rows}
-          onNext={(m) => { setMapping(m); setStep(2); }}
+          onNext={(cat) => { setCategory(cat); setStep(2); }}
           onBack={() => setStep(0)}
         />
       )}
       {step === 2 && (
         <Step3
+          headers={headers}
+          rows={rows}
+          category={category}
+          onNext={(m) => { setMapping(m); setStep(3); }}
+          onBack={() => setStep(1)}
+        />
+      )}
+      {step === 3 && (
+        <Step4
           rows={rows}
           mapping={mapping}
-          onBack={() => setStep(1)}
+          category={category}
+          onBack={() => setStep(2)}
           companyId={selectedCompany !== 'all' ? selectedCompany : undefined}
         />
       )}
