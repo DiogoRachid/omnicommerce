@@ -492,7 +492,7 @@ export default function Products() {
         <div>
           <h1 className="text-2xl font-bold">Produtos</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            {rootProducts.length} produtos · {products.filter(p => p.tipo === 'variacao').length} variações
+            {rootProducts.filter(p => p.tipo !== 'pai').length} produtos · {(() => { const ids = new Set(rootProducts.map(p => p.id)); return products.filter(p => p.tipo === 'variacao' && p.produto_pai_id && ids.has(p.produto_pai_id)).length; })()} variações
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
