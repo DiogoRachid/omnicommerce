@@ -461,14 +461,20 @@ function Step4({ rows, mapping, category, onBack, companyId }) {
       setProgress(Math.round(((i + 1) / rows.length) * 100 * 0.8));
     }
 
-    // Second pass: link children to parents
+    // Second pass: link children to parents + mark parents as 'pai'
     const toLink = created.filter(c => c && c.paiSku);
+    const updatedPais = new Set();
     for (let i = 0; i < toLink.length; i++) {
       const { id, paiSku } = toLink[i];
       const paiId = skuToId[paiSku];
       if (paiId) {
         try {
           await base44.entities.Product.update(id, { produto_pai_id: paiId });
+          // Upgrade parent to tipo 'pai' if not done yet
+          if (!updatedPais.has(paiId)) {
+            await base44.entities.Product.update(paiId, { tipo: 'pai' });
+            updatedPais.add(paiId);
+          }
         } catch (e) { /* silent */ }
       }
       setProgress(80 + Math.round(((i + 1) / Math.max(toLink.length, 1)) * 20));
