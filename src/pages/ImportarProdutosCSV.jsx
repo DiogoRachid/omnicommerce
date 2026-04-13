@@ -276,6 +276,9 @@ function Step2({ rows, onNext, onBack }) {
 // ── Step 3: Map Columns ───────────────────────────────────────────────────────
 function Step3({ headers, rows, category, onNext, onBack }) {
   // Build system fields: only category attributes (+ a few essential base fields)
+  // Fields that map directly to product system fields (not atributos_extras)
+  const DIRECT_SYSTEM_FIELDS = { marca: true, ncm: true, ean: true, unidade_medida: true, preco_venda: true, preco_custo: true, estoque_atual: true };
+
   const systemFields = useMemo(() => {
     const fields = [
       { value: '_ignorar', label: '— Ignorar —' },
@@ -283,27 +286,51 @@ function Step3({ headers, rows, category, onNext, onBack }) {
       { value: 'nome', label: 'Nome / Descrição' },
       { value: '_pai_sku', label: 'SKU do Produto Pai' },
       { value: 'ean', label: 'EAN / GTIN' },
-      { value: 'marca', label: 'Marca' },
-      { value: 'ncm', label: 'NCM' },
-      { value: 'unidade_medida', label: 'Unidade de Medida' },
       { value: 'preco_venda', label: 'Preço de Venda' },
       { value: 'preco_custo', label: 'Preço de Custo' },
       { value: 'estoque_atual', label: 'Estoque Atual' },
-      { value: 'peso_liquido_kg', label: 'Peso Líquido (kg)' },
-      { value: 'peso_bruto_kg', label: 'Peso Bruto (kg)' },
-      { value: 'largura_cm', label: 'Largura (cm)' },
-      { value: 'altura_cm', label: 'Altura (cm)' },
-      { value: 'comprimento_cm', label: 'Comprimento (cm)' },
     ];
+
+    const seen = new Set(['sku', 'nome', '_pai_sku', 'ean', 'preco_venda', 'preco_custo', 'estoque_atual']);
+
+    // Add variacoes_padrao (variation attributes like Cor, Tamanho)
     if (category?.variacoes_padrao?.length > 0) {
       category.variacoes_padrao.forEach(v => {
+        const key = v.nome.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        // Map known system fields directly, rest go to atributos_extras
+        const directKey = key === 'marca' ? 'marca' : key === 'ncm' ? 'ncm' : null;
         fields.push({
-          value: `atributos_extras.${v.nome}`,
+          value: directKey || `atributos_extras.${v.nome}`,
           label: `${v.nome}${v.obrigatorio ? ' *' : ''}`,
           category: true,
         });
       });
     }
+
+    // Add campos_marketplace fields (from any marketplace, deduplicated)
+    const mlFields = [
+      ...(category?.campos_marketplace?.mercado_livre || []),
+      ...(category?.campos_marketplace?.shopee || []),
+      ...(category?.campos_marketplace?.amazon || []),
+      ...(category?.campos_marketplace?.magalu || []),
+    ];
+    mlFields.forEach(f => {
+      const nome = f.nome || f.id || '';
+      const key = nome.toLowerCase();
+      if (!nome || seen.has(key)) return;
+      seen.add(key);
+      // Map known system fields directly
+      const directMap = { 'marca': 'marca', 'ncm': 'ncm', 'ean': 'ean', 'gtin': 'ean', 'unidade': 'unidade_medida' };
+      const directKey = directMap[key] || null;
+      fields.push({
+        value: directKey || `atributos_extras.${nome}`,
+        label: `${nome}${f.obrigatorio ? ' *' : ''}`,
+        category: true,
+      });
+    });
+
     return fields;
   }, [category]);
 
