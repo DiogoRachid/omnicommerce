@@ -57,6 +57,8 @@ export default function ImportProducts({ companies }) {
     queryFn: () => base44.entities.Product.list('-created_date', 1000),
   });
 
+  const [mlSelected, setMlSelected] = useState({});
+
   const { data: mlListings = [], refetch: refetchListings } = useQuery({
     queryKey: ['ml-listings'],
     queryFn: () => base44.entities.MarketplaceListing.filter({ marketplace: 'mercado_livre' }, '-ultima_sync', 200),
@@ -247,12 +249,51 @@ export default function ImportProducts({ companies }) {
 
           {/* Lista de anúncios sincronizados */}
           {mlListings.length > 0 && (
-            <div className="mt-2">
-              <p className="text-xs text-muted-foreground mb-2">{mlListings.length} anúncio(s) sincronizado(s)</p>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs text-muted-foreground">{mlListings.length} anúncio(s) sincronizado(s)</p>
+                {Object.values(mlSelected).filter(Boolean).length > 0 && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5 h-7 text-xs bg-green-600 hover:bg-green-700"
+                    onClick={async () => {
+                      const toImport = mlListings.filter(l => mlSelected[l.id]);
+                      for (const l of toImport) {
+                        const exists = localProducts.find(p => p.nome === l.product_name);
+                        if (!exists) {
+                          await base44.entities.Product.create({
+                            nome: l.product_name,
+                            sku: l.marketplace_item_id || `ML-${l.id}`,
+                            preco_venda: l.preco_anuncio || 0,
+                            ativo: l.status === 'ativo',
+                            origem: 'importacao',
+                            ml_id: l.marketplace_item_id,
+                          });
+                        }
+                      }
+                      queryClient.invalidateQueries({ queryKey: ['products'] });
+                      setMlSelected({});
+                    }}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Importar {Object.values(mlSelected).filter(Boolean).length} selecionados
+                  </Button>
+                )}
+              </div>
               <div className="overflow-x-auto rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={mlListings.length > 0 && mlListings.every(l => mlSelected[l.id])}
+                          onCheckedChange={v => {
+                            const s = {};
+                            mlListings.forEach(l => { s[l.id] = !!v; });
+                            setMlSelected(s);
+                          }}
+                        />
+                      </TableHead>
                       <TableHead>Título</TableHead>
                       <TableHead className="text-right">Preço</TableHead>
                       <TableHead>Status</TableHead>
@@ -262,7 +303,13 @@ export default function ImportProducts({ companies }) {
                   </TableHeader>
                   <TableBody>
                     {mlListings.map(l => (
-                      <TableRow key={l.id}>
+                      <TableRow key={l.id} className={mlSelected[l.id] ? 'bg-primary/5' : ''}>
+                        <TableCell>
+                          <Checkbox
+                            checked={!!mlSelected[l.id]}
+                            onCheckedChange={v => setMlSelected(s => ({ ...s, [l.id]: !!v }))}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm font-medium max-w-[220px] truncate">{l.product_name}</TableCell>
                         <TableCell className="text-right text-sm">
                           {l.preco_anuncio ? `R$ ${Number(l.preco_anuncio).toFixed(2)}` : '-'}

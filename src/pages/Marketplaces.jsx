@@ -5,12 +5,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Store, Wifi, Download, Upload, ClipboardList, PauseCircle, PlayCircle, RefreshCw, ExternalLink, Package } from 'lucide-react';
+import { Store, Wifi, Download, Upload, ClipboardList, RefreshCw, Package } from 'lucide-react';
+import ListingsTable from '@/components/marketplaces/ListingsTable';
 import { toast } from 'sonner';
 import ConnectionTester from '@/components/marketplaces/ConnectionTester';
 import ImportProducts from '@/components/marketplaces/ImportProducts';
@@ -37,12 +37,13 @@ const statusColors = {
 export default function Marketplaces() {
   const { selectedCompany } = useOutletContext();
   const queryClient = useQueryClient();
-  const [loadingAction, setLoadingAction] = useState({}); // { [listingId_action]: true }
+  const [loadingAction, setLoadingAction] = useState({});
   const [syncingAll, setSyncingAll] = useState(false);
-  const [stockDialog, setStockDialog] = useState(null); // listing object
+  const [stockDialog, setStockDialog] = useState(null);
   const [newPrice, setNewPrice] = useState('');
   const [newQty, setNewQty] = useState('');
   const [savingStock, setSavingStock] = useState(false);
+  const [activeCardFilter, setActiveCardFilter] = useState(null); // marketplace id from card click
 
   const setLoading = (id, action, val) =>
     setLoadingAction(prev => ({ ...prev, [`${id}_${action}`]: val }));
@@ -183,11 +184,19 @@ export default function Marketplaces() {
         </Card>
 
         {marketplaceStats.map((mp) => (
-          <Card key={mp.id}>
+          <Card
+            key={mp.id}
+            className={`cursor-pointer transition-all hover:shadow-md ${activeCardFilter === mp.id ? 'ring-2 ring-primary border-primary' : ''}`}
+            onClick={() => {
+              setActiveCardFilter(prev => prev === mp.id ? null : mp.id);
+              // switch to anuncios tab
+              document.querySelector('[value="anuncios"]')?.click();
+            }}
+          >
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">{mp.name}</h3>
-                <Store className="w-5 h-5 text-muted-foreground" />
+                <Store className={`w-5 h-5 ${activeCardFilter === mp.id ? 'text-primary' : 'text-muted-foreground'}`} />
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
@@ -259,87 +268,45 @@ export default function Marketplaces() {
           {listings.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground text-sm">
-                Nenhum anúncio encontrado. Exporte produtos para criar anúncios.
+                Nenhum anúncio encontrado. Sincronize ou exporte produtos para criar anúncios.
               </CardContent>
             </Card>
           ) : (
             <Card>
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardHeader className="pb-3">
                 <CardTitle className="text-base">Anúncios</CardTitle>
-                <Button size="sm" variant="outline" onClick={handleSyncAll} disabled={syncingAll} className="gap-1.5">
-                  <RefreshCw className={`w-3.5 h-3.5 ${syncingAll ? 'animate-spin' : ''}`} />
-                  {syncingAll ? 'Sincronizando...' : 'Sincronizar todos'}
-                </Button>
               </CardHeader>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Produto</TableHead>
-                      <TableHead>Marketplace</TableHead>
-                      <TableHead className="text-right">Preço</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Última Sync</TableHead>
-                      <TableHead className="w-32"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {listings.map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell className="text-sm font-medium">{l.product_name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-[10px]">
-                            {marketplaceNames[l.marketplace] || l.marketplace}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right text-sm">
-                          {l.preco_anuncio ? `R$ ${l.preco_anuncio.toFixed(2)}` : '-'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusColors[l.status] || 'secondary'} className="text-[10px] capitalize">
-                            {l.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {l.ultima_sync ? new Date(l.ultima_sync).toLocaleDateString('pt-BR') : '-'}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-0.5">
-                            {l.url_anuncio && (
-                              <a href={l.url_anuncio} target="_blank" rel="noopener noreferrer">
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </Button>
-                              </a>
-                            )}
-                            {l.status === 'ativo' && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-orange-500 hover:bg-orange-50"
-                                disabled={!!loadingAction[`${l.id}_pause`]}
-                                onClick={() => handlePause(l)}
-                                title="Pausar anúncio">
-                                <PauseCircle className={`w-3.5 h-3.5 ${loadingAction[`${l.id}_pause`] ? 'animate-pulse' : ''}`} />
-                              </Button>
-                            )}
-                            {l.status === 'pausado' && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-green-600 hover:bg-green-50"
-                                disabled={!!loadingAction[`${l.id}_reactivate`]}
-                                onClick={() => handleReactivate(l)}
-                                title="Reativar anúncio">
-                                <PlayCircle className={`w-3.5 h-3.5 ${loadingAction[`${l.id}_reactivate`] ? 'animate-pulse' : ''}`} />
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-primary hover:bg-primary/10"
-                              onClick={() => openStockDialog(l)}
-                              title="Atualizar estoque/preço">
-                              <RefreshCw className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <CardContent>
+                <ListingsTable
+                  listings={listings}
+                  loadingAction={loadingAction}
+                  onPause={handlePause}
+                  onReactivate={handleReactivate}
+                  onOpenStockDialog={openStockDialog}
+                  onSyncAll={handleSyncAll}
+                  syncingAll={syncingAll}
+                  marketplaceFilter={activeCardFilter}
+                  onClearMarketplaceFilter={() => setActiveCardFilter(null)}
+                  onImportSelected={async (items) => {
+                    for (const l of items) {
+                      const res = await base44.entities.Product.filter({ nome: l.product_name });
+                      if (!res || res.length === 0) {
+                        await base44.entities.Product.create({
+                          nome: l.product_name,
+                          sku: l.marketplace_item_id || `ML-${l.id}`,
+                          preco_venda: l.preco_anuncio || 0,
+                          ativo: l.status === 'ativo',
+                          origem: 'importacao',
+                          ml_id: l.marketplace_item_id,
+                          company_id: selectedCompany !== 'all' ? selectedCompany : undefined,
+                        });
+                      }
+                    }
+                    queryClient.invalidateQueries({ queryKey: ['products'] });
+                    toast.success(`${items.length} produto(s) importado(s) com sucesso!`);
+                  }}
+                />
+              </CardContent>
             </Card>
           )}
 
